@@ -59,7 +59,7 @@ message(STATUS "open62541 Version: ${OPEN62541_VERSION}")
 # Architecture #
 ################
 
-set(UA_ARCHITECTURES "none" "posix" "win32")
+set(UA_ARCHITECTURES "none" "posix" "win32" "zephyr")
 set(UA_ARCHITECTURE "" CACHE STRING "Architecture to build open62541 for")
 set_property(CACHE UA_ARCHITECTURE PROPERTY STRINGS "" ${UA_ARCHITECTURES})
 
@@ -76,6 +76,8 @@ if("${UA_ARCHITECTURE}" STREQUAL "posix")
     set(UA_ARCHITECTURE_POSIX 1)
 elseif("${UA_ARCHITECTURE}" STREQUAL "win32")
     set(UA_ARCHITECTURE_WIN32 1)
+elseif("${UA_ARCHITECTURE}" STREQUAL "zephyr")
+    set(UA_ARCHITECTURE_ZEPHYR 1)
 endif()
 
 #################
@@ -484,198 +486,6 @@ endif()
 
 if(UA_ENABLE_TPM2_SECURITY)
     list(APPEND open62541_LIBRARIES ${TPM2_LIB})
-endif()
-
-#####################
-# Compiler Settings #
-#####################
-
-# Check if a C compiler flag is supported and add it (if supported)
-# Taken from https://stackoverflow.com/a/33266748
-include(CheckCCompilerFlag)
-function(check_add_cc_flag CC_FLAG)
-    string(FIND "${CMAKE_C_FLAGS}" "${CC_FLAG}" flag_already_set)
-    if(flag_already_set EQUAL -1)
-        message(STATUS "Test CC flag ${CC_FLAG}")
-        check_c_compiler_flag("${CC_FLAG}" flag_supported)
-        if(flag_supported)
-            set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${CC_FLAG}" CACHE INTERNAL "C Compiler Flags")
-        endif()
-        unset(flag_supported CACHE)
-    endif()
-endfunction()
-function(add_cc_flag CC_FLAG)
-    string(FIND "${CMAKE_C_FLAGS}" "${CC_FLAG}" flag_already_set)
-    if(flag_already_set EQUAL -1)
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${CC_FLAG}" CACHE INTERNAL "C Compiler Flags")
-    endif()
-endfunction()
-
-if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID STREQUAL "Clang")
-    check_add_cc_flag("-std=c99")   # C99 mode
-    check_add_cc_flag("-pipe")      # Avoid writing temporary files (for compiler speed)
-    check_add_cc_flag("-Wall")      # Warnings
-    check_add_cc_flag("-Wextra")    # More warnings
-    check_add_cc_flag("-Wpedantic") # Standard compliance
-    if(UA_FORCE_WERROR)
-        check_add_cc_flag("-Werror") # All warnings are errors
-        check_add_cc_flag("-Wunused-command-line-argument") # Warning for command line args instead of error
-    endif()
-
-    check_add_cc_flag("-Wno-static-in-inline") # Clang doesn't like the use of static inline methods inside static inline methods
-    check_add_cc_flag("-Wno-overlength-strings") # May happen in the nodeset compiler when complex values are directly encoded
-    check_add_cc_flag("-Wno-unused-parameter") # some methods may require unused arguments to cast to a method pointer
-    check_add_cc_flag("-Wno-maybe-uninitialized") # too many false positives
-
-    # Use a strict subset of the C and C++ languages
-    check_add_cc_flag("-Wc++-compat")
-
-    # Check that format strings (printf/scanf) are sane
-    check_add_cc_flag("-Wformat")
-    check_add_cc_flag("-Wformat-security")
-    check_add_cc_flag("-Wformat-nonliteral")
-
-    # Check prototype definitions
-    check_add_cc_flag("-Wmissing-prototypes")
-    check_add_cc_flag("-Wstrict-prototypes")
-    check_add_cc_flag("-Wredundant-decls")
-
-    check_add_cc_flag("-Wuninitialized")
-    check_add_cc_flag("-Winit-self")
-    check_add_cc_flag("-Wcast-qual")
-    check_add_cc_flag("-Wstrict-overflow")
-    check_add_cc_flag("-Wnested-externs")
-    check_add_cc_flag("-Wmultichar")
-    check_add_cc_flag("-Wundef")
-    check_add_cc_flag("-fno-strict-aliasing") # fewer compiler assumptions about pointer types
-    check_add_cc_flag("-fexceptions") # recommended for multi-threaded C code, also in combination with C++ code
-
-    # Generate position-independent code for shared libraries (adds a performance penalty)
-    if(BUILD_SHARED_LIBS)
-        add_cc_flag("-fPIC")
-    endif()
-
-    if(UA_MULTITHREADING GREATER_EQUAL 100 AND NOT WIN32)
-        check_add_cc_flag("-pthread")
-    endif()
-
-    # Force 32bit build
-    if(UA_FORCE_32BIT)
-        if(MSVC)
-            message(FATAL_ERROR "Select the 32bit (cross-) compiler instead of forcing compiler options")
-        endif()
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -m32") # GCC and Clang, possibly more
-    endif()
-
-    # Coverage
-    if(UA_ENABLE_COVERAGE)
-        check_add_cc_flag("--coverage")
-        if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
-            check_add_cc_flag("-fprofile-instr-generate")
-            check_add_cc_flag("-fcoverage-mapping")
-        endif()
-    endif()
-
-    if(NOT MINGW AND NOT UA_BUILD_OSS_FUZZ)
-        if(UA_ENABLE_HARDENING)
-            check_add_cc_flag("-fstack-protector-strong") # more performant stack protector, available since gcc 4.9
-            check_add_cc_flag("-fstack-clash-protection") # increased reliability of stack overflow detection, available since gcc 8
-            # future use (control flow integrity protection)
-            if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD")
-                check_add_cc_flag("-mcet")
-                check_add_cc_flag("-fcf-protection")
-            endif()
-        endif()
-
-        # IPO requires too much memory for unit tests
-        # GCC docu recommends to compile all files with the same options, therefore ignore it completely
-        if(NOT UA_BUILD_UNIT_TESTS AND NOT DEFINED CMAKE_INTERPROCEDURAL_OPTIMIZATION)
-            # needed to check if IPO is supported (check needs cmake > 3.9)
-            if("${CMAKE_VERSION}" VERSION_GREATER 3.9)
-                cmake_policy(SET CMP0069 NEW) # needed as long as required cmake < 3.9
-                include(CheckIPOSupported)
-                check_ipo_supported(RESULT CC_HAS_IPO) # Inter Procedural Optimization / Link Time Optimization (should be same as -flto)
-                if(CC_HAS_IPO AND NOT UA_DEBUG)
-                    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
-                endif()
-            endif()
-        endif()
-    endif()
-
-    # Linker
-    set(CMAKE_SHARED_LIBRARY_LINK_C_FLAGS "") # cmake sets -rdynamic by default
-
-    # Debug
-    if(UA_ENABLE_DEBUG_SANITIZER AND BUILD_TYPE_LOWER_CASE STREQUAL "debug" AND UNIX AND NOT UA_BUILD_OSS_FUZZ AND
-       CMAKE_C_COMPILER_ID STREQUAL "Clang" AND NOT UA_ENABLE_UNIT_TESTS_MEMCHECK)
-        # Add default sanitizer settings when using clang and Debug build.
-        # This allows e.g. CLion to find memory locations for SegFaults
-        message(STATUS "Sanitizer enabled")
-        set(SANITIZER_FLAGS "-g -fno-omit-frame-pointer -gline-tables-only -fsanitize=address -fsanitize-address-use-after-scope -fsanitize=leak -fsanitize=undefined")
-        if(CMAKE_CXX_COMPILER_VERSION AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 10.0)
-            set(SANITIZER_FLAGS "${SANITIZER_FLAGS} -fsanitize-coverage=trace-pc-guard")
-        endif()
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${SANITIZER_FLAGS}")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${SANITIZER_FLAGS}")
-    endif()
-
-    if(NOT MINGW AND UA_ENABLE_HARDENING AND ((CMAKE_BUILD_TYPE STREQUAL "Release") OR (CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")))
-        check_add_cc_flag("-D_FORTIFY_SOURCE=2") # run-time buffer overflow detection (needs at least -O1)
-    endif()
-
-    # Strip release builds
-    if(CMAKE_BUILD_TYPE STREQUAL "MinSizeRel" OR CMAKE_BUILD_TYPE STREQUAL "Release")
-        check_add_cc_flag("-ffunction-sections")
-        check_add_cc_flag("-fdata-sections")
-        check_add_cc_flag("-fno-unwind-tables")
-        check_add_cc_flag("-fno-asynchronous-unwind-tables")
-        check_add_cc_flag("-fno-math-errno")
-#        check_add_cc_flag("-fno-ident")
-
-        # remove stack-protector with MinSizeRel
-        if(CMAKE_BUILD_TYPE STREQUAL "MinSizeRel")
-            check_add_cc_flag("-fno-stack-protector")
-        endif()
-        if(NOT OS9)
-            set(CMAKE_C_LINK_FLAGS "${CMAKE_C_LINK_FLAGS} -s")
-            set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -s")
-        endif()
-        if(APPLE)
-            set(CMAKE_C_LINK_FLAGS "${CMAKE_C_LINK_FLAGS} -Wl,-dead_strip")
-            set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-dead_strip")
-        else()
-            set(CMAKE_C_LINK_FLAGS "${CMAKE_C_LINK_FLAGS} -Wl,--gc-sections")
-            set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--gc-sections")
-        endif()
-        if(NOT WIN32 AND NOT CYGWIN AND NOT APPLE)
-            # these settings reduce the binary size by ~2kb
-            set(CMAKE_C_LINK_FLAGS "${CMAKE_C_LINK_FLAGS} -Wl,-z,norelro -Wl,--hash-style=gnu -Wl,--build-id=none")
-        endif()
-    endif()
-endif()
-
-if(APPLE)
-    set(CMAKE_MACOSX_RPATH 1)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_DARWIN_C_SOURCE=1")
-endif()
-
-if(MSVC)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /W3 /w44996")
-  if(UA_FORCE_WERROR)
-      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /WX") # Compiler warnings, error on warning
-  endif()
-
-  if(UA_MSVC_FORCE_STATIC_CRT AND NOT BUILD_SHARED_LIBS)
-    set(CompilerFlags CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE CMAKE_C_FLAGS
-        CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE)
-    foreach(CompilerFlag ${CompilerFlags})
-      string(REPLACE "/MD" "/MT" ${CompilerFlag} "${${CompilerFlag}}")
-    endforeach()
-  endif()
-endif()
-
-if(UA_BUILD_FUZZING OR UA_BUILD_OSS_FUZZ)
-    set(UA_ENABLE_MALLOC_SINGLETON ON)
 endif()
 
 #########################
@@ -1287,6 +1097,196 @@ SET_TARGET_PROPERTIES(open62541 PROPERTIES
 # DLL requires linking to dependencies
 target_link_libraries(open62541 PUBLIC ${open62541_PUBLIC_LIBRARIES})
 target_link_libraries(open62541 PRIVATE ${open62541_LIBRARIES})
+
+#####################
+# Compiler Settings #
+#####################
+
+# Check if a C compiler flag is supported and add it (if supported)
+# Taken from https://stackoverflow.com/a/33266748
+include(CheckCCompilerFlag)
+function(check_add_cc_flag CC_FLAG)
+    message(STATUS "Test CC flag ${CC_FLAG}")
+    check_c_compiler_flag("${CC_FLAG}" flag_supported)
+    if(flag_supported)
+        target_compile_options(open62541-plugins PRIVATE ${CC_FLAG})
+        target_compile_options(open62541-object PRIVATE ${CC_FLAG})
+        target_compile_options(open62541 PRIVATE ${CC_FLAG})
+    endif()
+    unset(flag_supported CACHE)
+endfunction()
+function(add_cc_flag CC_FLAG)
+    target_compile_options(open62541-plugins PRIVATE ${CC_FLAG})
+    target_compile_options(open62541-object PRIVATE ${CC_FLAG})
+    target_compile_options(open62541 PRIVATE ${CC_FLAG})
+endfunction()
+
+if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    check_add_cc_flag("-std=c99")   # C99 mode
+    check_add_cc_flag("-pipe")      # Avoid writing temporary files (for compiler speed)
+    check_add_cc_flag("-Wall")      # Warnings
+    check_add_cc_flag("-Wextra")    # More warnings
+    check_add_cc_flag("-Wpedantic") # Standard compliance
+    if(UA_FORCE_WERROR)
+        check_add_cc_flag("-Werror") # All warnings are errors
+        check_add_cc_flag("-Wunused-command-line-argument") # Warning for command line args instead of error
+    endif()
+
+    check_add_cc_flag("-Wno-static-in-inline") # Clang doesn't like the use of static inline methods inside static inline methods
+    check_add_cc_flag("-Wno-overlength-strings") # May happen in the nodeset compiler when complex values are directly encoded
+    check_add_cc_flag("-Wno-unused-parameter") # some methods may require unused arguments to cast to a method pointer
+    check_add_cc_flag("-Wno-maybe-uninitialized") # too many false positives
+
+    # Use a strict subset of the C and C++ languages
+    check_add_cc_flag("-Wc++-compat")
+
+    # Check that format strings (printf/scanf) are sane
+    check_add_cc_flag("-Wformat")
+    check_add_cc_flag("-Wformat-security")
+    check_add_cc_flag("-Wformat-nonliteral")
+
+    # Check prototype definitions
+    check_add_cc_flag("-Wmissing-prototypes")
+    check_add_cc_flag("-Wstrict-prototypes")
+    check_add_cc_flag("-Wredundant-decls")
+
+    check_add_cc_flag("-Wuninitialized")
+    check_add_cc_flag("-Winit-self")
+    check_add_cc_flag("-Wcast-qual")
+    check_add_cc_flag("-Wstrict-overflow")
+    check_add_cc_flag("-Wnested-externs")
+    check_add_cc_flag("-Wmultichar")
+    check_add_cc_flag("-Wundef")
+    check_add_cc_flag("-fno-strict-aliasing") # fewer compiler assumptions about pointer types
+    check_add_cc_flag("-fexceptions") # recommended for multi-threaded C code, also in combination with C++ code
+
+    # Generate position-independent code for shared libraries (adds a performance penalty)
+    if(BUILD_SHARED_LIBS)
+        add_cc_flag("-fPIC")
+    endif()
+
+    if(UA_MULTITHREADING GREATER_EQUAL 100 AND NOT WIN32)
+        check_add_cc_flag("-pthread")
+    endif()
+
+    # Force 32bit build
+    if(UA_FORCE_32BIT)
+        if(MSVC)
+            message(FATAL_ERROR "Select the 32bit (cross-) compiler instead of forcing compiler options")
+        endif()
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -m32") # GCC and Clang, possibly more
+    endif()
+
+    # Coverage
+    if(UA_ENABLE_COVERAGE)
+        check_add_cc_flag("--coverage")
+        if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
+            check_add_cc_flag("-fprofile-instr-generate")
+            check_add_cc_flag("-fcoverage-mapping")
+        endif()
+    endif()
+
+    if(NOT MINGW AND NOT UA_BUILD_OSS_FUZZ)
+        if(UA_ENABLE_HARDENING)
+            check_add_cc_flag("-fstack-protector-strong") # more performant stack protector, available since gcc 4.9
+            check_add_cc_flag("-fstack-clash-protection") # increased reliability of stack overflow detection, available since gcc 8
+            # future use (control flow integrity protection)
+            if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD")
+                check_add_cc_flag("-mcet")
+                check_add_cc_flag("-fcf-protection")
+            endif()
+        endif()
+
+        # IPO requires too much memory for unit tests
+        # GCC docu recommends to compile all files with the same options, therefore ignore it completely
+        if(NOT UA_BUILD_UNIT_TESTS AND NOT DEFINED CMAKE_INTERPROCEDURAL_OPTIMIZATION)
+            # needed to check if IPO is supported (check needs cmake > 3.9)
+            if("${CMAKE_VERSION}" VERSION_GREATER 3.9)
+                cmake_policy(SET CMP0069 NEW) # needed as long as required cmake < 3.9
+                include(CheckIPOSupported)
+                check_ipo_supported(RESULT CC_HAS_IPO) # Inter Procedural Optimization / Link Time Optimization (should be same as -flto)
+                if(CC_HAS_IPO AND NOT UA_DEBUG)
+                    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+                endif()
+            endif()
+        endif()
+    endif()
+
+    # Linker
+    set(CMAKE_SHARED_LIBRARY_LINK_C_FLAGS "") # cmake sets -rdynamic by default
+
+    # Debug
+    if(UA_ENABLE_DEBUG_SANITIZER AND BUILD_TYPE_LOWER_CASE STREQUAL "debug" AND UNIX AND NOT UA_BUILD_OSS_FUZZ AND
+       CMAKE_C_COMPILER_ID STREQUAL "Clang" AND NOT UA_ENABLE_UNIT_TESTS_MEMCHECK)
+        # Add default sanitizer settings when using clang and Debug build.
+        # This allows e.g. CLion to find memory locations for SegFaults
+        message(STATUS "Sanitizer enabled")
+        set(SANITIZER_FLAGS "-g -fno-omit-frame-pointer -gline-tables-only -fsanitize=address -fsanitize-address-use-after-scope -fsanitize=leak -fsanitize=undefined")
+        if(CMAKE_CXX_COMPILER_VERSION AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 10.0)
+            set(SANITIZER_FLAGS "${SANITIZER_FLAGS} -fsanitize-coverage=trace-pc-guard")
+        endif()
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${SANITIZER_FLAGS}")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${SANITIZER_FLAGS}")
+    endif()
+
+    if(NOT MINGW AND UA_ENABLE_HARDENING AND ((CMAKE_BUILD_TYPE STREQUAL "Release") OR (CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")))
+        check_add_cc_flag("-D_FORTIFY_SOURCE=2") # run-time buffer overflow detection (needs at least -O1)
+    endif()
+
+    # Strip release builds
+    if(CMAKE_BUILD_TYPE STREQUAL "MinSizeRel" OR CMAKE_BUILD_TYPE STREQUAL "Release")
+        check_add_cc_flag("-ffunction-sections")
+        check_add_cc_flag("-fdata-sections")
+        check_add_cc_flag("-fno-unwind-tables")
+        check_add_cc_flag("-fno-asynchronous-unwind-tables")
+        check_add_cc_flag("-fno-math-errno")
+#        check_add_cc_flag("-fno-ident")
+
+        # remove stack-protector with MinSizeRel
+        if(CMAKE_BUILD_TYPE STREQUAL "MinSizeRel")
+            check_add_cc_flag("-fno-stack-protector")
+        endif()
+        if(NOT OS9)
+            set(CMAKE_C_LINK_FLAGS "${CMAKE_C_LINK_FLAGS} -s")
+            set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -s")
+        endif()
+        if(APPLE)
+            set(CMAKE_C_LINK_FLAGS "${CMAKE_C_LINK_FLAGS} -Wl,-dead_strip")
+            set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-dead_strip")
+        else()
+            set(CMAKE_C_LINK_FLAGS "${CMAKE_C_LINK_FLAGS} -Wl,--gc-sections")
+            set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--gc-sections")
+        endif()
+        if(NOT WIN32 AND NOT CYGWIN AND NOT APPLE)
+            # these settings reduce the binary size by ~2kb
+            set(CMAKE_C_LINK_FLAGS "${CMAKE_C_LINK_FLAGS} -Wl,-z,norelro -Wl,--hash-style=gnu -Wl,--build-id=none")
+        endif()
+    endif()
+endif()
+
+if(APPLE)
+    set(CMAKE_MACOSX_RPATH 1)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_DARWIN_C_SOURCE=1")
+endif()
+
+if(MSVC)
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /W3 /w44996")
+  if(UA_FORCE_WERROR)
+      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /WX") # Compiler warnings, error on warning
+  endif()
+
+  if(UA_MSVC_FORCE_STATIC_CRT AND NOT BUILD_SHARED_LIBS)
+    set(CompilerFlags CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE CMAKE_C_FLAGS
+        CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE)
+    foreach(CompilerFlag ${CompilerFlags})
+      string(REPLACE "/MD" "/MT" ${CompilerFlag} "${${CompilerFlag}}")
+    endforeach()
+  endif()
+endif()
+
+if(UA_BUILD_FUZZING OR UA_BUILD_OSS_FUZZ)
+    set(UA_ENABLE_MALLOC_SINGLETON ON)
+endif()
 
 ##########################
 # Build Selected Targets #
