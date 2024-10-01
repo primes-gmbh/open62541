@@ -5,6 +5,8 @@
  *    Copyright 2021, 2024 (c) Fraunhofer IOSB (Author: Julius Pfrommer)
  */
 
+#if defined(UA_ARCHITECTURE_POSIX) || defined(UA_ARCHITECTURE_WIN32)
+
 #include "eventloop_posix.h"
 #include <signal.h>
 
@@ -441,3 +443,5 @@ UA_InterruptManager_new_POSIX(const UA_String eventSourceName) {
     im->deregisterInterrupt = deregisterPOSIXInterrupt;
     return im;
 }
+
+#endif

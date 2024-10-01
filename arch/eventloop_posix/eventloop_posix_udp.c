@@ -6,6 +6,7 @@
  *    Copyright 2021 (c) Fraunhofer IOSB (Author: Jan Hermes)
  */
 
+#if defined(UA_ARCHITECTURE_POSIX) || defined(UA_ARCHITECTURE_WIN32)
 #include "eventloop_posix.h"
 
 #define IPV4_PREFIX_MASK 0xF0
@@ -1437,3 +1438,4 @@ UA_ConnectionManager_new_POSIX_UDP(const UA_String eventSourceName) {
     cm->cm.closeConnection = UDP_shutdownConnection;
     return &cm->cm;
 }
+#endif

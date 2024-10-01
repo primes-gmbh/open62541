@@ -7,6 +7,7 @@
  */
 
 #include "eventloop_posix.h"
+
 #include "open62541/plugin/eventloop.h"
 
 #if defined(UA_ARCHITECTURE_POSIX) && !defined(__APPLE__) && !defined(__MACH__)
@@ -19,58 +20,49 @@
 
 static UA_DateTime
 UA_EventLoopPOSIX_nextTimer(UA_EventLoop *public_el) {
-    UA_EventLoopPOSIX *el = (UA_EventLoopPOSIX*)public_el;
+    UA_EventLoopPOSIX *el = (UA_EventLoopPOSIX *)public_el;
     return UA_Timer_next(&el->timer);
 }
 
 static UA_StatusCode
-UA_EventLoopPOSIX_addTimer(UA_EventLoop *public_el,
-                                    UA_Callback cb,
-                                    void *application, void *data,
-                                    UA_Double interval_ms,
-                                    UA_DateTime *baseTime,
-                                    UA_TimerPolicy timerPolicy,
-                                    UA_UInt64 *callbackId) {
-    UA_EventLoopPOSIX *el = (UA_EventLoopPOSIX*)public_el;
+UA_EventLoopPOSIX_addTimer(UA_EventLoop *public_el, UA_Callback cb, void *application,
+                           void *data, UA_Double interval_ms, UA_DateTime *baseTime,
+                           UA_TimerPolicy timerPolicy, UA_UInt64 *callbackId) {
+    UA_EventLoopPOSIX *el = (UA_EventLoopPOSIX *)public_el;
     return UA_Timer_add(&el->timer, cb, application, data, interval_ms,
-                        public_el->dateTime_nowMonotonic(public_el),
-                        baseTime, timerPolicy, callbackId);
+                        public_el->dateTime_nowMonotonic(public_el), baseTime,
+                        timerPolicy, callbackId);
 }
 
 static UA_StatusCode
-UA_EventLoopPOSIX_modifyTimer(UA_EventLoop *public_el,
-                              UA_UInt64 callbackId,
-                              UA_Double interval_ms,
-                              UA_DateTime *baseTime,
+UA_EventLoopPOSIX_modifyTimer(UA_EventLoop *public_el, UA_UInt64 callbackId,
+                              UA_Double interval_ms, UA_DateTime *baseTime,
                               UA_TimerPolicy timerPolicy) {
-    UA_EventLoopPOSIX *el = (UA_EventLoopPOSIX*)public_el;
+    UA_EventLoopPOSIX *el = (UA_EventLoopPOSIX *)public_el;
     return UA_Timer_modify(&el->timer, callbackId, interval_ms,
-                           public_el->dateTime_nowMonotonic(public_el),
-                           baseTime, timerPolicy);
+                           public_el->dateTime_nowMonotonic(public_el), baseTime,
+                           timerPolicy);
 }
 
 static void
-UA_EventLoopPOSIX_removeTimer(UA_EventLoop *public_el,
-                              UA_UInt64 callbackId) {
-    UA_EventLoopPOSIX *el = (UA_EventLoopPOSIX*)public_el;
+UA_EventLoopPOSIX_removeTimer(UA_EventLoop *public_el, UA_UInt64 callbackId) {
+    UA_EventLoopPOSIX *el = (UA_EventLoopPOSIX *)public_el;
     UA_Timer_remove(&el->timer, callbackId);
 }
 
 void
-UA_EventLoopPOSIX_addDelayedCallback(UA_EventLoop *public_el,
-                                     UA_DelayedCallback *dc) {
-    UA_EventLoopPOSIX *el = (UA_EventLoopPOSIX*)public_el;
+UA_EventLoopPOSIX_addDelayedCallback(UA_EventLoop *public_el, UA_DelayedCallback *dc) {
+    UA_EventLoopPOSIX *el = (UA_EventLoopPOSIX *)public_el;
     UA_DelayedCallback *old;
     do {
         old = el->delayedCallbacks;
         dc->next = old;
-    } while(UA_atomic_cmpxchg((void * volatile *)&el->delayedCallbacks, old, dc) != old);
+    } while(UA_atomic_cmpxchg((void *volatile *)&el->delayedCallbacks, old, dc) != old);
 }
 
 static void
-UA_EventLoopPOSIX_removeDelayedCallback(UA_EventLoop *public_el,
-                                     UA_DelayedCallback *dc) {
-    UA_EventLoopPOSIX *el = (UA_EventLoopPOSIX*)public_el;
+UA_EventLoopPOSIX_removeDelayedCallback(UA_EventLoop *public_el, UA_DelayedCallback *dc) {
+    UA_EventLoopPOSIX *el = (UA_EventLoopPOSIX *)public_el;
     UA_LOCK(&el->elMutex);
     UA_DelayedCallback **prev = &el->delayedCallbacks;
     while(*prev) {
@@ -128,24 +120,22 @@ UA_EventLoopPOSIX_start(UA_EventLoopPOSIX *el) {
                  "Starting the EventLoop");
 
     /* Setting the clock source */
-    const UA_Int32 *cs = (const UA_Int32*)
-        UA_KeyValueMap_getScalar(&el->eventLoop.params,
-                                 UA_QUALIFIEDNAME(0, "clock-source"),
-                                 &UA_TYPES[UA_TYPES_INT32]);
-    const UA_Int32 *csm = (const UA_Int32*)
-        UA_KeyValueMap_getScalar(&el->eventLoop.params,
-                                 UA_QUALIFIEDNAME(0, "clock-source-monotonic"),
-                                 &UA_TYPES[UA_TYPES_INT32]);
+    const UA_Int32 *cs = (const UA_Int32 *)UA_KeyValueMap_getScalar(
+        &el->eventLoop.params, UA_QUALIFIEDNAME(0, "clock-source"),
+        &UA_TYPES[UA_TYPES_INT32]);
+    const UA_Int32 *csm = (const UA_Int32 *)UA_KeyValueMap_getScalar(
+        &el->eventLoop.params, UA_QUALIFIEDNAME(0, "clock-source-monotonic"),
+        &UA_TYPES[UA_TYPES_INT32]);
 #if defined(UA_ARCHITECTURE_POSIX) && !defined(__APPLE__) && !defined(__MACH__)
     el->clockSource = CLOCK_REALTIME;
     if(cs)
         el->clockSource = *cs;
 
-# ifdef CLOCK_MONOTONIC_RAW
+#ifdef CLOCK_MONOTONIC_RAW
     el->clockSourceMonotonic = CLOCK_MONOTONIC_RAW;
-# else
+#else
     el->clockSourceMonotonic = CLOCK_MONOTONIC;
-# endif
+#endif
     if(csm)
         el->clockSourceMonotonic = *csm;
 #else
@@ -158,10 +148,9 @@ UA_EventLoopPOSIX_start(UA_EventLoopPOSIX *el) {
     /* Create the self-pipe */
     int err = UA_EventLoopPOSIX_pipe(el->selfpipe);
     if(err != 0) {
-        UA_LOG_SOCKET_ERRNO_WRAP(
-           UA_LOG_WARNING(el->eventLoop.logger, UA_LOGCATEGORY_NETWORK,
-                          "Eventloop\t| Could not create the self-pipe (%s)",
-                          errno_str));
+        UA_LOG_SOCKET_ERRNO_WRAP(UA_LOG_WARNING(
+            el->eventLoop.logger, UA_LOGCATEGORY_NETWORK,
+            "Eventloop\t| Could not create the self-pipe (%s)", errno_str));
         UA_UNLOCK(&el->elMutex);
         return UA_STATUSCODE_BADINTERNALERROR;
     }
@@ -170,10 +159,9 @@ UA_EventLoopPOSIX_start(UA_EventLoopPOSIX *el) {
 #ifdef UA_HAVE_EPOLL
     el->epollfd = epoll_create1(0);
     if(el->epollfd == -1) {
-        UA_LOG_SOCKET_ERRNO_WRAP(
-           UA_LOG_WARNING(el->eventLoop.logger, UA_LOGCATEGORY_NETWORK,
-                          "Eventloop\t| Could not create the epoll socket (%s)",
-                          errno_str));
+        UA_LOG_SOCKET_ERRNO_WRAP(UA_LOG_WARNING(
+            el->eventLoop.logger, UA_LOGCATEGORY_NETWORK,
+            "Eventloop\t| Could not create the epoll socket (%s)", errno_str));
         UA_close(el->selfpipe[0]);
         UA_close(el->selfpipe[1]);
         UA_UNLOCK(&el->elMutex);
@@ -187,10 +175,9 @@ UA_EventLoopPOSIX_start(UA_EventLoopPOSIX *el) {
     event.events = EPOLLIN;
     err = epoll_ctl(el->epollfd, EPOLL_CTL_ADD, el->selfpipe[0], &event);
     if(err != 0) {
-        UA_LOG_SOCKET_ERRNO_WRAP(
-           UA_LOG_WARNING(el->eventLoop.logger, UA_LOGCATEGORY_NETWORK,
-                          "Eventloop\t| Could not register the self-pipe for epoll (%s)",
-                          errno_str));
+        UA_LOG_SOCKET_ERRNO_WRAP(UA_LOG_WARNING(
+            el->eventLoop.logger, UA_LOGCATEGORY_NETWORK,
+            "Eventloop\t| Could not register the self-pipe for epoll (%s)", errno_str));
         UA_close(el->selfpipe[0]);
         UA_close(el->selfpipe[1]);
         close(el->epollfd);
@@ -210,8 +197,7 @@ UA_EventLoopPOSIX_start(UA_EventLoopPOSIX *el) {
     }
 
     /* Dirty-write the state that is const "from the outside" */
-    *(UA_EventLoopState*)(uintptr_t)&el->eventLoop.state =
-        UA_EVENTLOOPSTATE_STARTED;
+    *(UA_EventLoopState *)(uintptr_t)&el->eventLoop.state = UA_EVENTLOOPSTATE_STARTED;
 
     UA_UNLOCK(&el->elMutex);
     return res;
@@ -237,8 +223,7 @@ checkClosed(UA_EventLoopPOSIX *el) {
     UA_close(el->selfpipe[1]);
 
     /* Dirty-write the state that is const "from the outside" */
-    *(UA_EventLoopState*)(uintptr_t)&el->eventLoop.state =
-        UA_EVENTLOOPSTATE_STOPPED;
+    *(UA_EventLoopState *)(uintptr_t)&el->eventLoop.state = UA_EVENTLOOPSTATE_STOPPED;
 
     /* Close the epoll/IOCP socket once all EventSources have shut down */
 #ifdef UA_HAVE_EPOLL
@@ -264,8 +249,7 @@ UA_EventLoopPOSIX_stop(UA_EventLoopPOSIX *el) {
                  "Stopping the EventLoop");
 
     /* Set to STOPPING to prevent "normal use" */
-    *(UA_EventLoopState*)(uintptr_t)&el->eventLoop.state =
-        UA_EVENTLOOPSTATE_STOPPING;
+    *(UA_EventLoopState *)(uintptr_t)&el->eventLoop.state = UA_EVENTLOOPSTATE_STOPPING;
 
     /* Stop all event sources (asynchronous) */
     UA_EventSource *es = el->eventLoop.eventSources;
@@ -289,8 +273,7 @@ UA_EventLoopPOSIX_run(UA_EventLoopPOSIX *el, UA_UInt32 timeout) {
     UA_LOCK(&el->elMutex);
 
     if(el->executing) {
-        UA_LOG_ERROR(el->eventLoop.logger,
-                     UA_LOGCATEGORY_EVENTLOOP,
+        UA_LOG_ERROR(el->eventLoop.logger, UA_LOGCATEGORY_EVENTLOOP,
                      "Cannot run EventLoop from the run method itself");
         UA_UNLOCK(&el->elMutex);
         return UA_STATUSCODE_BADINTERNALERROR;
@@ -307,12 +290,10 @@ UA_EventLoopPOSIX_run(UA_EventLoopPOSIX *el, UA_UInt32 timeout) {
         return UA_STATUSCODE_BADINTERNALERROR;
     }
 
-    UA_LOG_TRACE(el->eventLoop.logger, UA_LOGCATEGORY_EVENTLOOP,
-                 "Iterate the EventLoop");
+    UA_LOG_TRACE(el->eventLoop.logger, UA_LOGCATEGORY_EVENTLOOP, "Iterate the EventLoop");
 
     /* Process cyclic callbacks */
-    UA_DateTime dateBefore =
-        el->eventLoop.dateTime_nowMonotonic(&el->eventLoop);
+    UA_DateTime dateBefore = el->eventLoop.dateTime_nowMonotonic(&el->eventLoop);
 
     UA_UNLOCK(&el->elMutex);
     UA_DateTime dateNext = UA_Timer_process(&el->timer, dateBefore);
@@ -359,8 +340,7 @@ UA_EventLoopPOSIX_run(UA_EventLoopPOSIX *el, UA_UInt32 timeout) {
 /*****************************/
 
 static UA_StatusCode
-UA_EventLoopPOSIX_registerEventSource(UA_EventLoopPOSIX *el,
-                                      UA_EventSource *es) {
+UA_EventLoopPOSIX_registerEventSource(UA_EventLoopPOSIX *el, UA_EventSource *es) {
     UA_LOCK(&el->elMutex);
 
     /* Already registered? */
@@ -368,7 +348,7 @@ UA_EventLoopPOSIX_registerEventSource(UA_EventLoopPOSIX *el,
         UA_LOG_ERROR(el->eventLoop.logger, UA_LOGCATEGORY_NETWORK,
                      "Cannot register the EventSource \"%.*s\": "
                      "already registered",
-                     (int)es->name.length, (char*)es->name.data);
+                     (int)es->name.length, (char *)es->name.data);
         UA_UNLOCK(&el->elMutex);
         return UA_STATUSCODE_BADINTERNALERROR;
     }
@@ -390,8 +370,7 @@ UA_EventLoopPOSIX_registerEventSource(UA_EventLoopPOSIX *el,
 }
 
 static UA_StatusCode
-UA_EventLoopPOSIX_deregisterEventSource(UA_EventLoopPOSIX *el,
-                                        UA_EventSource *es) {
+UA_EventLoopPOSIX_deregisterEventSource(UA_EventLoopPOSIX *el, UA_EventSource *es) {
     UA_LOCK(&el->elMutex);
 
     if(es->state != UA_EVENTSOURCESTATE_STOPPED) {
@@ -427,7 +406,7 @@ UA_EventLoopPOSIX_deregisterEventSource(UA_EventLoopPOSIX *el,
 static UA_DateTime
 UA_EventLoopPOSIX_DateTime_now(UA_EventLoop *el) {
 #if defined(UA_ARCHITECTURE_POSIX) && !defined(__APPLE__) && !defined(__MACH__)
-    UA_EventLoopPOSIX *pel = (UA_EventLoopPOSIX*)el;
+    UA_EventLoopPOSIX *pel = (UA_EventLoopPOSIX *)el;
     struct timespec ts;
     int res = clock_gettime(pel->clockSource, &ts);
     if(UA_UNLIKELY(res != 0))
@@ -441,7 +420,7 @@ UA_EventLoopPOSIX_DateTime_now(UA_EventLoop *el) {
 static UA_DateTime
 UA_EventLoopPOSIX_DateTime_nowMonotonic(UA_EventLoop *el) {
 #if defined(UA_ARCHITECTURE_POSIX) && !defined(__APPLE__) && !defined(__MACH__)
-    UA_EventLoopPOSIX *pel = (UA_EventLoopPOSIX*)el;
+    UA_EventLoopPOSIX *pel = (UA_EventLoopPOSIX *)el;
     struct timespec ts;
     int res = clock_gettime(pel->clockSourceMonotonic, &ts);
     if(UA_UNLIKELY(res != 0))
@@ -508,8 +487,7 @@ UA_EventLoopPOSIX_free(UA_EventLoopPOSIX *el) {
 
 UA_EventLoop *
 UA_EventLoop_new_POSIX(const UA_Logger *logger) {
-    UA_EventLoopPOSIX *el = (UA_EventLoopPOSIX*)
-        UA_calloc(1, sizeof(UA_EventLoopPOSIX));
+    UA_EventLoopPOSIX *el = (UA_EventLoopPOSIX *)UA_calloc(1, sizeof(UA_EventLoopPOSIX));
     if(!el)
         return NULL;
 
@@ -525,15 +503,15 @@ UA_EventLoop_new_POSIX(const UA_Logger *logger) {
     /* Set the public EventLoop content */
     el->eventLoop.logger = logger;
 
-    el->eventLoop.start = (UA_StatusCode (*)(UA_EventLoop*))UA_EventLoopPOSIX_start;
-    el->eventLoop.stop = (void (*)(UA_EventLoop*))UA_EventLoopPOSIX_stop;
-    el->eventLoop.free = (UA_StatusCode (*)(UA_EventLoop*))UA_EventLoopPOSIX_free;
-    el->eventLoop.run = (UA_StatusCode (*)(UA_EventLoop*, UA_UInt32))UA_EventLoopPOSIX_run;
-    el->eventLoop.cancel = (void (*)(UA_EventLoop*))UA_EventLoopPOSIX_cancel;
+    el->eventLoop.start = (UA_StatusCode(*)(UA_EventLoop *))UA_EventLoopPOSIX_start;
+    el->eventLoop.stop = (void (*)(UA_EventLoop *))UA_EventLoopPOSIX_stop;
+    el->eventLoop.free = (UA_StatusCode(*)(UA_EventLoop *))UA_EventLoopPOSIX_free;
+    el->eventLoop.run =
+        (UA_StatusCode(*)(UA_EventLoop *, UA_UInt32))UA_EventLoopPOSIX_run;
+    el->eventLoop.cancel = (void (*)(UA_EventLoop *))UA_EventLoopPOSIX_cancel;
 
     el->eventLoop.dateTime_now = UA_EventLoopPOSIX_DateTime_now;
-    el->eventLoop.dateTime_nowMonotonic =
-        UA_EventLoopPOSIX_DateTime_nowMonotonic;
+    el->eventLoop.dateTime_nowMonotonic = UA_EventLoopPOSIX_DateTime_nowMonotonic;
     el->eventLoop.dateTime_localTimeUtcOffset =
         UA_EventLoopPOSIX_DateTime_localTimeUtcOffset;
 
@@ -544,12 +522,10 @@ UA_EventLoop_new_POSIX(const UA_Logger *logger) {
     el->eventLoop.addDelayedCallback = UA_EventLoopPOSIX_addDelayedCallback;
     el->eventLoop.removeDelayedCallback = UA_EventLoopPOSIX_removeDelayedCallback;
 
-    el->eventLoop.registerEventSource =
-        (UA_StatusCode (*)(UA_EventLoop*, UA_EventSource*))
-        UA_EventLoopPOSIX_registerEventSource;
-    el->eventLoop.deregisterEventSource =
-        (UA_StatusCode (*)(UA_EventLoop*, UA_EventSource*))
-        UA_EventLoopPOSIX_deregisterEventSource;
+    el->eventLoop.registerEventSource = (UA_StatusCode(*)(
+        UA_EventLoop *, UA_EventSource *))UA_EventLoopPOSIX_registerEventSource;
+    el->eventLoop.deregisterEventSource = (UA_StatusCode(*)(
+        UA_EventLoop *, UA_EventSource *))UA_EventLoopPOSIX_deregisterEventSource;
 
     return &el->eventLoop;
 }
@@ -559,11 +535,9 @@ UA_EventLoop_new_POSIX(const UA_Logger *logger) {
 /***************************/
 
 UA_StatusCode
-UA_EventLoopPOSIX_allocNetworkBuffer(UA_ConnectionManager *cm,
-                                     uintptr_t connectionId,
-                                     UA_ByteString *buf,
-                                     size_t bufSize) {
-    UA_POSIXConnectionManager *pcm = (UA_POSIXConnectionManager*)cm;
+UA_EventLoopPOSIX_allocNetworkBuffer(UA_ConnectionManager *cm, uintptr_t connectionId,
+                                     UA_ByteString *buf, size_t bufSize) {
+    UA_POSIXConnectionManager *pcm = (UA_POSIXConnectionManager *)cm;
     if(pcm->txBuffer.length == 0)
         return UA_ByteString_allocBuffer(buf, bufSize);
     if(pcm->txBuffer.length < bufSize)
@@ -574,10 +548,9 @@ UA_EventLoopPOSIX_allocNetworkBuffer(UA_ConnectionManager *cm,
 }
 
 void
-UA_EventLoopPOSIX_freeNetworkBuffer(UA_ConnectionManager *cm,
-                                    uintptr_t connectionId,
+UA_EventLoopPOSIX_freeNetworkBuffer(UA_ConnectionManager *cm, uintptr_t connectionId,
                                     UA_ByteString *buf) {
-    UA_POSIXConnectionManager *pcm = (UA_POSIXConnectionManager*)cm;
+    UA_POSIXConnectionManager *pcm = (UA_POSIXConnectionManager *)cm;
     if(pcm->txBuffer.data == buf->data)
         UA_ByteString_init(buf);
     else
@@ -588,10 +561,9 @@ UA_StatusCode
 UA_EventLoopPOSIX_allocateStaticBuffers(UA_POSIXConnectionManager *pcm) {
     UA_StatusCode res = UA_STATUSCODE_GOOD;
     UA_UInt32 rxBufSize = 2u << 16; /* The default is 64kb */
-    const UA_UInt32 *configRxBufSize = (const UA_UInt32 *)
-        UA_KeyValueMap_getScalar(&pcm->cm.eventSource.params,
-                                 UA_QUALIFIEDNAME(0, "recv-bufsize"),
-                                 &UA_TYPES[UA_TYPES_UINT32]);
+    const UA_UInt32 *configRxBufSize = (const UA_UInt32 *)UA_KeyValueMap_getScalar(
+        &pcm->cm.eventSource.params, UA_QUALIFIEDNAME(0, "recv-bufsize"),
+        &UA_TYPES[UA_TYPES_UINT32]);
     if(configRxBufSize)
         rxBufSize = *configRxBufSize;
     if(pcm->rxBuffer.length != rxBufSize) {
@@ -599,10 +571,9 @@ UA_EventLoopPOSIX_allocateStaticBuffers(UA_POSIXConnectionManager *pcm) {
         res = UA_ByteString_allocBuffer(&pcm->rxBuffer, rxBufSize);
     }
 
-    const UA_UInt32 *txBufSize = (const UA_UInt32 *)
-        UA_KeyValueMap_getScalar(&pcm->cm.eventSource.params,
-                                 UA_QUALIFIEDNAME(0, "send-bufsize"),
-                                 &UA_TYPES[UA_TYPES_UINT32]);
+    const UA_UInt32 *txBufSize = (const UA_UInt32 *)UA_KeyValueMap_getScalar(
+        &pcm->cm.eventSource.params, UA_QUALIFIEDNAME(0, "send-bufsize"),
+        &UA_TYPES[UA_TYPES_UINT32]);
     if(txBufSize && pcm->txBuffer.length != *txBufSize) {
         UA_ByteString_clear(&pcm->txBuffer);
         res |= UA_ByteString_allocBuffer(&pcm->txBuffer, *txBufSize);
@@ -623,7 +594,18 @@ cmpFD(const UA_FD *a, const UA_FD *b) {
 
 UA_StatusCode
 UA_EventLoopPOSIX_setNonBlocking(UA_FD sockfd) {
-#ifndef _WIN32
+#if defined(UA_ARCHITECTURE_ZEPHYR)
+    int fl;
+    fl = zsock_fcntl(sockfd, F_GETFL, 0);
+    if(fl == -1) {
+        return UA_STATUSCODE_BADINTERNALERROR;
+    }
+    fl |= O_NONBLOCK;
+    fl = zsock_fcntl(sockfd, F_SETFL, fl);
+    if(fl == -1) {
+        return UA_STATUSCODE_BADINTERNALERROR;
+    }
+#elif defined(_WIN32)
     int opts = fcntl(sockfd, F_GETFL);
     if(opts < 0 || fcntl(sockfd, F_SETFL, opts | O_NONBLOCK) < 0)
         return UA_STATUSCODE_BADINTERNALERROR;
@@ -648,16 +630,21 @@ UA_EventLoopPOSIX_setNoSigPipe(UA_FD sockfd) {
 
 UA_StatusCode
 UA_EventLoopPOSIX_setReusable(UA_FD sockfd) {
+#if defined(UA_ARCHITECTURE_ZEPHYR)
+    // This operation is not supported on zephyr, thus always return GOOD
+    return UA_STATUSCODE_GOOD;
+#elif !defined(WIN32)
     int enableReuseVal = 1;
-#ifndef _WIN32
     int res = UA_setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR,
-                            (const char*)&enableReuseVal, sizeof(enableReuseVal));
-    res |= UA_setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT,
-                            (const char*)&enableReuseVal, sizeof(enableReuseVal));
+                            (const char *)&enableReuseVal, sizeof(enableReuseVal));
+    res |= UA_setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, (const char *)&enableReuseVal,
+                         sizeof(enableReuseVal));
     return (res == 0) ? UA_STATUSCODE_GOOD : UA_STATUSCODE_BADINTERNALERROR;
+    return UA_STATUSCODE_GOOD
 #else
+    int enableReuseVal = 1;
     int res = UA_setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR,
-                            (const char*)&enableReuseVal, sizeof(enableReuseVal));
+                            (const char *)&enableReuseVal, sizeof(enableReuseVal));
     return (res == 0) ? UA_STATUSCODE_GOOD : UA_STATUSCODE_BADINTERNALERROR;
 #endif
 }
@@ -670,8 +657,12 @@ UA_EventLoopPOSIX_setReusable(UA_FD sockfd) {
 static void
 flushSelfPipe(UA_SOCKET s) {
     char buf[128];
-#ifdef _WIN32
+#if defined(UA_ARCHITECTURE_ZEPHYR)
+    zsock_recv(s, buf, 128, 0);
+#elif defined(_WIN32)
     recv(s, buf, 128, 0);
+#elif defined(UA_ARCHITECTURE_ZEPHYR)
+    zsock_recv(s, buf, 128, 0);
 #else
     ssize_t i;
     do {
@@ -685,12 +676,12 @@ flushSelfPipe(UA_SOCKET s) {
 UA_StatusCode
 UA_EventLoopPOSIX_registerFD(UA_EventLoopPOSIX *el, UA_RegisteredFD *rfd) {
     UA_LOCK_ASSERT(&el->elMutex);
-    UA_LOG_DEBUG(el->eventLoop.logger, UA_LOGCATEGORY_EVENTLOOP,
-                 "Registering fd: %u", (unsigned)rfd->fd);
+    UA_LOG_DEBUG(el->eventLoop.logger, UA_LOGCATEGORY_EVENTLOOP, "Registering fd: %u",
+                 (unsigned)rfd->fd);
 
     /* Realloc */
-    UA_RegisteredFD **fds_tmp = (UA_RegisteredFD**)
-        UA_realloc(el->fds, sizeof(UA_RegisteredFD*) * (el->fdsSize + 1));
+    UA_RegisteredFD **fds_tmp = (UA_RegisteredFD **)UA_realloc(
+        el->fds, sizeof(UA_RegisteredFD *) * (el->fdsSize + 1));
     if(!fds_tmp) {
         return UA_STATUSCODE_BADOUTOFMEMORY;
     }
@@ -712,8 +703,8 @@ UA_EventLoopPOSIX_modifyFD(UA_EventLoopPOSIX *el, UA_RegisteredFD *rfd) {
 void
 UA_EventLoopPOSIX_deregisterFD(UA_EventLoopPOSIX *el, UA_RegisteredFD *rfd) {
     UA_LOCK_ASSERT(&el->elMutex);
-    UA_LOG_DEBUG(el->eventLoop.logger, UA_LOGCATEGORY_EVENTLOOP,
-                 "Unregistering fd: %u", (unsigned)rfd->fd);
+    UA_LOG_DEBUG(el->eventLoop.logger, UA_LOGCATEGORY_EVENTLOOP, "Unregistering fd: %u",
+                 (unsigned)rfd->fd);
 
     /* Find the entry */
     size_t i = 0;
@@ -730,8 +721,8 @@ UA_EventLoopPOSIX_deregisterFD(UA_EventLoopPOSIX *el, UA_RegisteredFD *rfd) {
         /* Move the last entry in the ith slot and realloc. */
         el->fdsSize--;
         el->fds[i] = el->fds[el->fdsSize];
-        UA_RegisteredFD **fds_tmp = (UA_RegisteredFD**)
-            UA_realloc(el->fds, sizeof(UA_RegisteredFD*) * el->fdsSize);
+        UA_RegisteredFD **fds_tmp = (UA_RegisteredFD **)UA_realloc(
+            el->fds, sizeof(UA_RegisteredFD *) * el->fdsSize);
         /* if realloc fails the fds are still in a correct state with
          * possibly lost memory, so failing silently here is ok */
         if(fds_tmp)
@@ -745,15 +736,44 @@ UA_EventLoopPOSIX_deregisterFD(UA_EventLoopPOSIX *el, UA_RegisteredFD *rfd) {
 }
 
 static UA_FD
+#if defined(UA_ARCHITECTURE_ZEPHYR)
+setFDSets(UA_EventLoopPOSIX *el, zsock_fd_set *readset, zsock_fd_set *writeset,
+          zsock_fd_set *errset) {
+#else
 setFDSets(UA_EventLoopPOSIX *el, fd_set *readset, fd_set *writeset, fd_set *errset) {
+#endif
     UA_LOCK_ASSERT(&el->elMutex);
+    /* Always listen on the read-end of the pipe */
+    UA_FD highestfd = el->selfpipe[0];
+#if defined(UA_ARCHITECTURE_ZEPHYR)
+    ZSOCK_FD_ZERO(readset);
+    ZSOCK_FD_ZERO(writeset);
+    ZSOCK_FD_ZERO(errset);
 
+    ZSOCK_FD_SET(el->selfpipe[0], readset);
+
+    for(size_t i = 0; i < el->fdsSize; i++) {
+        UA_FD currentFD = el->fds[i]->fd;
+
+        /* Add to the fd_sets */
+        if(el->fds[i]->listenEvents & UA_FDEVENT_IN)
+            ZSOCK_FD_SET(currentFD, readset);
+        if(el->fds[i]->listenEvents & UA_FDEVENT_OUT)
+            ZSOCK_FD_SET(currentFD, writeset);
+
+        /* Always return errors */
+        ZSOCK_FD_SET(currentFD, errset);
+
+        /* Highest fd? */
+        if(currentFD > highestfd)
+            highestfd = currentFD;
+    }
+#elif defined(_WIN32)
     FD_ZERO(readset);
     FD_ZERO(writeset);
     FD_ZERO(errset);
 
     /* Always listen on the read-end of the pipe */
-    UA_FD highestfd = el->selfpipe[0];
     FD_SET(el->selfpipe[0], readset);
 
     for(size_t i = 0; i < el->fdsSize; i++) {
@@ -772,6 +792,7 @@ setFDSets(UA_EventLoopPOSIX *el, fd_set *readset, fd_set *writeset, fd_set *errs
         if(currentFD > highestfd)
             highestfd = currentFD;
     }
+#endif
     return highestfd;
 }
 
@@ -780,7 +801,11 @@ UA_EventLoopPOSIX_pollFDs(UA_EventLoopPOSIX *el, UA_DateTime listenTimeout) {
     UA_assert(listenTimeout >= 0);
     UA_LOCK_ASSERT(&el->elMutex);
 
+#if defined(UA_ARCHITECTURE_ZEPHYR)
+    zsock_fd_set readset, writeset, errset;
+#else
     fd_set readset, writeset, errset;
+#endif
     UA_FD highestfd = setFDSets(el, &readset, &writeset, &errset);
 
     /* Nothing to do? */
@@ -801,18 +826,22 @@ UA_EventLoopPOSIX_pollFDs(UA_EventLoopPOSIX *el, UA_DateTime listenTimeout) {
     };
 
     UA_UNLOCK(&el->elMutex);
-    int selectStatus = UA_select(highestfd+1, &readset, &writeset, &errset, &tmptv);
+    int selectStatus = UA_select(highestfd + 1, &readset, &writeset, &errset, &tmptv);
     UA_LOCK(&el->elMutex);
     if(selectStatus < 0) {
         /* We will retry, only log the error */
-        UA_LOG_SOCKET_ERRNO_WRAP(
-            UA_LOG_WARNING(el->eventLoop.logger, UA_LOGCATEGORY_EVENTLOOP,
-                           "Error during select: %s", errno_str));
+        UA_LOG_SOCKET_ERRNO_WRAP(UA_LOG_WARNING(el->eventLoop.logger,
+                                                UA_LOGCATEGORY_EVENTLOOP,
+                                                "Error during select: %s", errno_str));
         return UA_STATUSCODE_GOOD;
     }
 
     /* The self-pipe has received. Clear the buffer by reading. */
+#if defined(UA_ARCHITECTURE_ZEPHYR)
+    if(UA_UNLIKELY(ZSOCK_FD_ISSET(el->selfpipe[0], &readset)))
+#else
     if(UA_UNLIKELY(FD_ISSET(el->selfpipe[0], &readset)))
+#endif
         flushSelfPipe(el->selfpipe[0]);
 
     /* Loop over all registered FD to see if an event arrived. Yes, this is why
@@ -827,6 +856,17 @@ UA_EventLoopPOSIX_pollFDs(UA_EventLoopPOSIX *el, UA_DateTime listenTimeout) {
 
         /* Event signaled for the fd? */
         short event = 0;
+#if defined(UA_ARCHITECTURE_ZEPHYR)
+        if(ZSOCK_FD_ISSET(rfd->fd, &readset)) {
+            event = UA_FDEVENT_IN;
+        } else if(ZSOCK_FD_ISSET(rfd->fd, &writeset)) {
+            event = UA_FDEVENT_OUT;
+        } else if(ZSOCK_FD_ISSET(rfd->fd, &errset)) {
+            event = UA_FDEVENT_ERR;
+        } else {
+            continue;
+        }
+#else
         if(FD_ISSET(rfd->fd, &readset)) {
             event = UA_FDEVENT_IN;
         } else if(FD_ISSET(rfd->fd, &writeset)) {
@@ -836,10 +876,10 @@ UA_EventLoopPOSIX_pollFDs(UA_EventLoopPOSIX *el, UA_DateTime listenTimeout) {
         } else {
             continue;
         }
+#endif
 
         UA_LOG_DEBUG(el->eventLoop.logger, UA_LOGCATEGORY_EVENTLOOP,
-                     "Processing event %u on fd %u", (unsigned)event,
-                     (unsigned)rfd->fd);
+                     "Processing event %u on fd %u", (unsigned)event, (unsigned)rfd->fd);
 
         /* Call the EventSource callback */
         rfd->eventSourceCB(rfd->es, rfd, event);
@@ -866,10 +906,9 @@ UA_EventLoopPOSIX_registerFD(UA_EventLoopPOSIX *el, UA_RegisteredFD *rfd) {
 
     int err = epoll_ctl(el->epollfd, EPOLL_CTL_ADD, rfd->fd, &event);
     if(err != 0) {
-        UA_LOG_SOCKET_ERRNO_WRAP(
-           UA_LOG_WARNING(el->eventLoop.logger, UA_LOGCATEGORY_NETWORK,
-                          "TCP %u\t| Could not register for epoll (%s)",
-                          rfd->fd, errno_str));
+        UA_LOG_SOCKET_ERRNO_WRAP(UA_LOG_WARNING(
+            el->eventLoop.logger, UA_LOGCATEGORY_NETWORK,
+            "TCP %u\t| Could not register for epoll (%s)", rfd->fd, errno_str));
         return UA_STATUSCODE_BADINTERNALERROR;
     }
     return UA_STATUSCODE_GOOD;
@@ -888,10 +927,9 @@ UA_EventLoopPOSIX_modifyFD(UA_EventLoopPOSIX *el, UA_RegisteredFD *rfd) {
 
     int err = epoll_ctl(el->epollfd, EPOLL_CTL_MOD, rfd->fd, &event);
     if(err != 0) {
-        UA_LOG_SOCKET_ERRNO_WRAP(
-           UA_LOG_WARNING(el->eventLoop.logger, UA_LOGCATEGORY_NETWORK,
-                          "TCP %u\t| Could not modify for epoll (%s)",
-                          rfd->fd, errno_str));
+        UA_LOG_SOCKET_ERRNO_WRAP(UA_LOG_WARNING(
+            el->eventLoop.logger, UA_LOGCATEGORY_NETWORK,
+            "TCP %u\t| Could not modify for epoll (%s)", rfd->fd, errno_str));
         return UA_STATUSCODE_BADINTERNALERROR;
     }
     return UA_STATUSCODE_GOOD;
@@ -901,10 +939,9 @@ void
 UA_EventLoopPOSIX_deregisterFD(UA_EventLoopPOSIX *el, UA_RegisteredFD *rfd) {
     int res = epoll_ctl(el->epollfd, EPOLL_CTL_DEL, rfd->fd, NULL);
     if(res != 0) {
-        UA_LOG_SOCKET_ERRNO_WRAP(
-           UA_LOG_WARNING(el->eventLoop.logger, UA_LOGCATEGORY_NETWORK,
-                          "TCP %u\t| Could not deregister from epoll (%s)",
-                          rfd->fd, errno_str));
+        UA_LOG_SOCKET_ERRNO_WRAP(UA_LOG_WARNING(
+            el->eventLoop.logger, UA_LOGCATEGORY_NETWORK,
+            "TCP %u\t| Could not deregister from epoll (%s)", rfd->fd, errno_str));
     }
 }
 
@@ -916,8 +953,8 @@ UA_EventLoopPOSIX_pollFDs(UA_EventLoopPOSIX *el, UA_DateTime listenTimeout) {
     struct epoll_event epoll_events[64];
     int epollfd = el->epollfd;
     UA_UNLOCK(&el->elMutex);
-    int events = epoll_wait(epollfd, epoll_events, 64,
-                            (int)(listenTimeout / UA_DATETIME_MSEC));
+    int events =
+        epoll_wait(epollfd, epoll_events, 64, (int)(listenTimeout / UA_DATETIME_MSEC));
     /* TODO: Replace with pwait2 for higher-precision timeouts once this is
      * available in the standard library.
      *
@@ -938,15 +975,14 @@ UA_EventLoopPOSIX_pollFDs(UA_EventLoopPOSIX *el, UA_DateTime listenTimeout) {
             return UA_STATUSCODE_GOOD;
         }
         UA_LOG_SOCKET_ERRNO_WRAP(
-           UA_LOG_WARNING(el->eventLoop.logger, UA_LOGCATEGORY_NETWORK,
-                          "TCP\t| Error %s, closing the server socket",
-                          errno_str));
+            UA_LOG_WARNING(el->eventLoop.logger, UA_LOGCATEGORY_NETWORK,
+                           "TCP\t| Error %s, closing the server socket", errno_str));
         return UA_STATUSCODE_BADINTERNALERROR;
     }
 
     /* Process all received events */
     for(int i = 0; i < events; i++) {
-        UA_RegisteredFD *rfd = (UA_RegisteredFD*)epoll_events[i].data.ptr;
+        UA_RegisteredFD *rfd = (UA_RegisteredFD *)epoll_events[i].data.ptr;
 
         /* The self-pipe has received */
         if(!rfd) {
@@ -977,31 +1013,50 @@ UA_EventLoopPOSIX_pollFDs(UA_EventLoopPOSIX *el, UA_DateTime listenTimeout) {
 
 #endif /* defined(UA_HAVE_EPOLL) */
 
-#if defined(_WIN32) || defined(__APPLE__)
-int UA_EventLoopPOSIX_pipe(SOCKET fds[2]) {
+#if defined(_WIN32) || defined(__APPLE__) || defined(UA_ARCHITECTURE_ZEPHYR)
+int
+UA_EventLoopPOSIX_pipe(SOCKET fds[2]) {
+    SOCKET lst;
     struct sockaddr_in inaddr;
     memset(&inaddr, 0, sizeof(inaddr));
     inaddr.sin_family = AF_INET;
-    inaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     inaddr.sin_port = 0;
+#if defined(UA_ARCHITECTURE_ZEPHYR)
+    const struct in_addr ipv4_loopback = INADDR_LOOPBACK_INIT;
+    inaddr.sin_addr = ipv4_loopback;
+    lst = zsock_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    zsock_bind(lst, (struct sockaddr *)&inaddr, sizeof(inaddr));
+    zsock_listen(lst, 1);
 
-    SOCKET lst = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    struct sockaddr_storage addr;
+    memset(&addr, 0, sizeof(addr));
+    int len = sizeof(addr);
+    zsock_getsockname(lst, (struct sockaddr *)&addr, &len);
+
+    fds[0] = zsock_socket(AF_INET, SOCK_STREAM, 0);
+    int err = zsock_connect(fds[0], (struct sockaddr *)&addr, len);
+    fds[1] = zsock_accept(lst, 0, 0);
+    zsock_close(lst);
+#else
+    inaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    lst = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     bind(lst, (struct sockaddr *)&inaddr, sizeof(inaddr));
     listen(lst, 1);
 
     struct sockaddr_storage addr;
     memset(&addr, 0, sizeof(addr));
     int len = sizeof(addr);
-    getsockname(lst, (struct sockaddr*)&addr, &len);
+    getsockname(lst, (struct sockaddr *)&addr, &len);
 
     fds[0] = socket(AF_INET, SOCK_STREAM, 0);
-    int err = connect(fds[0], (struct sockaddr*)&addr, len);
+    int err = connect(fds[0], (struct sockaddr *)&addr, len);
     fds[1] = accept(lst, 0, 0);
 #ifdef __WIN32
     closesocket(lst);
 #endif
 #ifdef __APPLE__
     close(lst);
+#endif
 #endif
 
     UA_EventLoopPOSIX_setNoSigPipe(fds[0]);
@@ -1020,8 +1075,10 @@ UA_EventLoopPOSIX_cancel(UA_EventLoopPOSIX *el) {
     if(!el->executing)
         return;
 
-    /* Trigger the self-pipe */
-#ifdef _WIN32
+        /* Trigger the self-pipe */
+#if defined(UA_ARCHITECTURE_ZEPHYR)
+    int err = zsock_send(el->selfpipe[1], ".", 1, 0);
+#elif defined(_WIN32)
     int err = send(el->selfpipe[1], ".", 1, 0);
 #else
     ssize_t err = write(el->selfpipe[1], ".", 1);
