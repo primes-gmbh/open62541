@@ -3,9 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  *
  *    Copyright 2017 (c) Stefan Profanter, fortiss GmbH
- *    Copyright 2021 (c) Christian von Arnim, ISW University of Stuttgart (for VDW and umati)
- *    Copyright 2021 (c) Fraunhofer IOSB (Author: Julius Pfrommer)
- *    Copyright 2021 (c) Fraunhofer IOSB (Author: Jan Hermes)
+ *    Copyright 2021 (c) Christian von Arnim, ISW University of Stuttgart (for VDW and
+ * umati) Copyright 2021 (c) Fraunhofer IOSB (Author: Julius Pfrommer) Copyright 2021 (c)
+ * Fraunhofer IOSB (Author: Jan Hermes)
  */
 
 #ifndef UA_EVENTLOOP_POSIX_H_
@@ -14,12 +14,13 @@
 #include <open62541/config.h>
 #include <open62541/plugin/eventloop.h>
 
-#include "../eventloop_common/timer.h"
-#include "../eventloop_common/eventloop_common.h"
 #include "../../deps/mp_printf.h"
 #include "../../deps/open62541_queue.h"
+#include "../eventloop_common/eventloop_common.h"
+#include "../eventloop_common/timer.h"
 
-#if defined(UA_ARCHITECTURE_POSIX) || defined(UA_ARCHITECTURE_WIN32)
+#if defined(UA_ARCHITECTURE_POSIX) || defined(UA_ARCHITECTURE_WIN32) ||                  \
+    defined(UA_ARCHITECTURE_ZEPHYR)
 
 _UA_BEGIN_DECLS
 
@@ -33,15 +34,15 @@ _UA_BEGIN_DECLS
 
 /* Disable some security warnings on MSVC */
 #if defined(_MSC_VER) && !defined(_CRT_SECURE_NO_WARNINGS)
-# define _CRT_SECURE_NO_WARNINGS
+#define _CRT_SECURE_NO_WARNINGS
 #endif
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <winsock2.h>
-#include <windows.h>
-#include <ws2tcpip.h>
 #include <basetsd.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
 
 #ifndef _SSIZE_T_DEFINED
 typedef SSIZE_T ssize_t;
@@ -59,44 +60,46 @@ typedef SSIZE_T ssize_t;
 #define UA_POLLOUT POLLWRNORM
 #define UA_SHUT_RDWR SD_BOTH
 
-#define UA_getnameinfo(sa, salen, host, hostlen, serv, servlen, flags) \
+#define UA_getnameinfo(sa, salen, host, hostlen, serv, servlen, flags)                   \
     getnameinfo(sa, (socklen_t)salen, host, (DWORD)hostlen, serv, (DWORD)servlen, flags)
-#define UA_poll(fds,nfds,timeout) WSAPoll((LPWSAPOLLFD)fds, nfds, timeout)
+#define UA_poll(fds, nfds, timeout) WSAPoll((LPWSAPOLLFD)fds, nfds, timeout)
 #define UA_send(sockfd, buf, len, flags) send(sockfd, buf, (int)(len), flags)
 #define UA_recv(sockfd, buf, len, flags) recv(sockfd, buf, (int)(len), flags)
-#define UA_sendto(sockfd, buf, len, flags, dest_addr, addrlen) \
-    sendto(sockfd, (const char*)(buf), (int)(len), flags, dest_addr, (int) (addrlen))
+#define UA_sendto(sockfd, buf, len, flags, dest_addr, addrlen)                           \
+    sendto(sockfd, (const char *)(buf), (int)(len), flags, dest_addr, (int)(addrlen))
 #define UA_close closesocket
-#define UA_select(nfds, readfds, writefds, exceptfds, timeout) \
+#define UA_select(nfds, readfds, writefds, exceptfds, timeout)                           \
     select((int)(nfds), readfds, writefds, exceptfds, timeout)
 #define UA_connect(sockfd, addr, addrlen) connect(sockfd, addr, (int)(addrlen))
-#define UA_getsockopt(sockfd, level, optname, optval, optlen) \
-    getsockopt(sockfd, level, optname, (char*) (optval), optlen)
-#define UA_setsockopt(sockfd, level, optname, optval, optlen) \
-    setsockopt(sockfd, level, optname, (const char*) (optval), optlen)
+#define UA_getsockopt(sockfd, level, optname, optval, optlen)                            \
+    getsockopt(sockfd, level, optname, (char *)(optval), optlen)
+#define UA_setsockopt(sockfd, level, optname, optval, optlen)                            \
+    setsockopt(sockfd, level, optname, (const char *)(optval), optlen)
 #define UA_inet_pton InetPton
 
 #if UA_IPV6
-# define UA_if_nametoindex if_nametoindex
+#define UA_if_nametoindex if_nametoindex
 
-# include <iphlpapi.h>
+#include <iphlpapi.h>
 
 #endif
 
-#define UA_LOG_SOCKET_ERRNO_WRAP(LOG) { \
-    char *errno_str = NULL; \
-    FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, \
-    NULL, WSAGetLastError(), \
-    MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), \
-    (LPSTR)&errno_str, 0, NULL); \
-    LOG; \
-    LocalFree(errno_str); \
-}
+#define UA_LOG_SOCKET_ERRNO_WRAP(LOG)                                                    \
+    {                                                                                    \
+        char *errno_str = NULL;                                                          \
+        FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |     \
+                           FORMAT_MESSAGE_IGNORE_INSERTS,                                \
+                       NULL, WSAGetLastError(),                                          \
+                       MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR) & errno_str,   \
+                       0, NULL);                                                         \
+        LOG;                                                                             \
+        LocalFree(errno_str);                                                            \
+    }
 #define UA_LOG_SOCKET_ERRNO_GAI_WRAP UA_LOG_SOCKET_ERRNO_WRAP
 
 /* Fix redefinition of SLIST_ENTRY on mingw winnt.h */
 #if !defined(_SYS_QUEUE_H_) && defined(SLIST_ENTRY)
-# undef SLIST_ENTRY
+#undef SLIST_ENTRY
 #endif
 
 #elif defined(UA_ARCHITECTURE_POSIX)
@@ -105,26 +108,27 @@ typedef SSIZE_T ssize_t;
 /* POSIX Definitions */
 /*********************/
 
+#include <fcntl.h>
+#include <ifaddrs.h>
+#include <netdb.h>
+#include <poll.h>
+#include <unistd.h>
+
 #include <arpa/inet.h>
+#include <net/if.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
-#include <netdb.h>
 #include <sys/ioctl.h>
 #include <sys/select.h>
-#include <net/if.h>
-#include <poll.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <ifaddrs.h>
 
 #if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
-# include <sys/param.h>
-# if defined(BSD)
-#  include <sys/socket.h>
-# endif
+#include <sys/param.h>
+#if defined(BSD)
+#include <sys/socket.h>
+#endif
 #endif
 
-#if defined (__APPLE__)
+#if defined(__APPLE__)
 typedef int SOCKET;
 #endif
 
@@ -140,7 +144,7 @@ typedef int SOCKET;
 #define UA_POLLOUT POLLOUT
 #define UA_SHUT_RDWR SHUT_RDWR
 
-#define UA_getnameinfo(sa, salen, host, hostlen, serv, servlen, flags) \
+#define UA_getnameinfo(sa, salen, host, hostlen, serv, servlen, flags)                   \
     getnameinfo(sa, salen, host, hostlen, serv, servlen, flags)
 #define UA_poll poll
 #define UA_send send
@@ -154,18 +158,78 @@ typedef int SOCKET;
 #define UA_inet_pton inet_pton
 #define UA_if_nametoindex if_nametoindex
 
-#define UA_clean_errno(STR_FUN) \
-    (errno == 0 ? (char*) "None" : (STR_FUN)(errno))
-#define UA_LOG_SOCKET_ERRNO_WRAP(LOG) \
-    { char *errno_str = UA_clean_errno(strerror); LOG; errno = 0; }
-#define UA_LOG_SOCKET_ERRNO_GAI_WRAP(LOG) \
-    { const char *errno_str = UA_clean_errno(gai_strerror); LOG; errno = 0; }
+#define UA_clean_errno(STR_FUN) (errno == 0 ? (char *)"None" : (STR_FUN)(errno))
+#define UA_LOG_SOCKET_ERRNO_WRAP(LOG)                                                    \
+    {                                                                                    \
+        char *errno_str = UA_clean_errno(strerror);                                      \
+        LOG;                                                                             \
+        errno = 0;                                                                       \
+    }
+#define UA_LOG_SOCKET_ERRNO_GAI_WRAP(LOG)                                                \
+    {                                                                                    \
+        const char *errno_str = UA_clean_errno(gai_strerror);                            \
+        LOG;                                                                             \
+        errno = 0;                                                                       \
+    }
 
 /* epoll_pwait returns bogus data with the tc compiler */
 #if defined(__linux__) && !defined(__TINYC__)
-# define UA_HAVE_EPOLL
-# include <sys/epoll.h>
+#define UA_HAVE_EPOLL
+#include <sys/epoll.h>
 #endif
+
+#elif defined(UA_ARCHITECTURE_ZEPHYR)
+
+/*********************/
+/* Zephyr Definitions */
+/*********************/
+
+#include <fcntl.h>
+#include <unistd.h>
+
+#include <zephyr/posix/fcntl.h>
+#include <zephyr/net/socket.h>
+
+#define UA_IPV6 1
+#define SOCKET int
+#define UA_SOCKET SOCKET
+#define UA_INVALID_SOCKET -1
+#define UA_ERRNO errno
+#define UA_INTERRUPTED EINTR
+#define UA_AGAIN EAGAIN /* the same as wouldblock on nearly every system */
+#define UA_INPROGRESS EINPROGRESS
+#define UA_WOULDBLOCK EWOULDBLOCK
+#define UA_POLLIN POLLIN
+#define UA_POLLOUT POLLOUT
+#define UA_SHUT_RDWR SHUT_RDWR
+
+#define UA_getnameinfo(sa, salen, host, hostlen, serv, servlen, flags)                   \
+    getnameinfo(sa, salen, host, hostlen, serv, servlen, flags)
+#define UA_poll zsock_poll
+#define UA_send zsock_send
+#define UA_recv zsock_recv
+#define UA_sendto zsock_sendto
+#define UA_close zsock_close
+#define UA_select zsock_select
+#define UA_connect zsock_connect
+#define UA_getsockopt getsockopt
+#define UA_setsockopt setsockopt
+#define UA_inet_pton zsock_inet_pton
+#define UA_if_nametoindex zsock_if_nametoindex
+
+#define UA_clean_errno(STR_FUN) (errno == 0 ? (char *)"None" : (STR_FUN)(errno))
+#define UA_LOG_SOCKET_ERRNO_WRAP(LOG)                                                    \
+    {                                                                                    \
+        char *errno_str = UA_clean_errno(strerror);                                      \
+        LOG;                                                                             \
+        errno = 0;                                                                       \
+    }
+#define UA_LOG_SOCKET_ERRNO_GAI_WRAP(LOG)                                                \
+    {                                                                                    \
+        const char *errno_str = UA_clean_errno(gai_strerror);                            \
+        LOG;                                                                             \
+        errno = 0;                                                                       \
+    }
 
 #endif
 
@@ -217,7 +281,8 @@ struct UA_RegisteredFD {
     UA_FDCallback eventSourceCB;
 };
 
-enum ZIP_CMP cmpFD(const UA_FD *a, const UA_FD *b);
+enum ZIP_CMP
+cmpFD(const UA_FD *a, const UA_FD *b);
 typedef ZIP_HEAD(UA_FDTree, UA_RegisteredFD) UA_FDTree;
 ZIP_FUNCTIONS(UA_FDTree, UA_RegisteredFD, zipPointers, UA_FD, fd, cmpFD)
 
@@ -293,14 +358,11 @@ UA_StatusCode
 UA_EventLoopPOSIX_allocateStaticBuffers(UA_POSIXConnectionManager *pcm);
 
 UA_StatusCode
-UA_EventLoopPOSIX_allocNetworkBuffer(UA_ConnectionManager *cm,
-                                     uintptr_t connectionId,
-                                     UA_ByteString *buf,
-                                     size_t bufSize);
+UA_EventLoopPOSIX_allocNetworkBuffer(UA_ConnectionManager *cm, uintptr_t connectionId,
+                                     UA_ByteString *buf, size_t bufSize);
 
 void
-UA_EventLoopPOSIX_freeNetworkBuffer(UA_ConnectionManager *cm,
-                                    uintptr_t connectionId,
+UA_EventLoopPOSIX_freeNetworkBuffer(UA_ConnectionManager *cm, uintptr_t connectionId,
                                     UA_ByteString *buf);
 
 /* Set the socket non-blocking. If the listen-socket is nonblocking, incoming
@@ -318,10 +380,11 @@ UA_EventLoopPOSIX_setReusable(UA_FD sockfd);
 
 /* Windows has no pipes. Use a local TCP connection for the self-pipe trick.
  * https://stackoverflow.com/a/3333565 */
-#if defined(_WIN32) || defined(__APPLE__)
-int UA_EventLoopPOSIX_pipe(SOCKET fds[2]);
+#if defined(_WIN32) || defined(__APPLE__) || defined(UA_ARCHITECTURE_ZEPHYR)
+int
+UA_EventLoopPOSIX_pipe(SOCKET fds[2]);
 #else
-# define UA_EventLoopPOSIX_pipe(fds) pipe2(fds, O_NONBLOCK)
+#define UA_EventLoopPOSIX_pipe(fds) pipe2(fds, O_NONBLOCK)
 #endif
 
 /* Cancel the current _run by sending to the self-pipe */
@@ -329,8 +392,7 @@ void
 UA_EventLoopPOSIX_cancel(UA_EventLoopPOSIX *el);
 
 void
-UA_EventLoopPOSIX_addDelayedCallback(UA_EventLoop *public_el,
-                                     UA_DelayedCallback *dc);
+UA_EventLoopPOSIX_addDelayedCallback(UA_EventLoop *public_el, UA_DelayedCallback *dc);
 
 _UA_END_DECLS
 

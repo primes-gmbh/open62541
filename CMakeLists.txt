@@ -1016,8 +1016,17 @@ assign_source_group(${lib_headers} ${lib_sources})
 assign_source_group(${plugin_headers} ${plugin_sources})
 
 # Define the target libraries
-add_library(open62541-object OBJECT ${lib_sources} ${lib_headers} ${exported_headers})
-add_library(open62541-plugins OBJECT ${plugin_sources} ${plugin_headers})
+
+if(${UA_ARCHITECTURE} STREQUAL "zephyr")
+    zephyr_library_named(open62541-object)
+    zephyr_library_named(open62541-plugins)
+    target_sources(open62541-object PRIVATE ${lib_sources} ${lib_headers} ${exported_headers})
+    target_sources(open62541-plugins PRIVATE ${plugin_sources} ${plugin_headers})
+else()
+    add_library(open62541-object OBJECT ${lib_sources} ${lib_headers} ${exported_headers})
+    add_library(open62541-plugins OBJECT ${plugin_sources} ${plugin_headers})
+endif()
+
 add_library(open62541 $<TARGET_OBJECTS:open62541-object> $<TARGET_OBJECTS:open62541-plugins>)
 
 add_dependencies(open62541-object open62541-code-generation)
@@ -1121,7 +1130,7 @@ function(add_cc_flag CC_FLAG)
     target_compile_options(open62541 PRIVATE ${CC_FLAG})
 endfunction()
 
-if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID STREQUAL "Clang")
+if((CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID STREQUAL "Clang") AND NOT UA_ARCHITECTURE STREQUAL "zephyr")
     check_add_cc_flag("-std=c99")   # C99 mode
     check_add_cc_flag("-pipe")      # Avoid writing temporary files (for compiler speed)
     check_add_cc_flag("-Wall")      # Warnings
@@ -1191,7 +1200,7 @@ if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID STREQUAL "Clang")
             check_add_cc_flag("-fstack-protector-strong") # more performant stack protector, available since gcc 4.9
             check_add_cc_flag("-fstack-clash-protection") # increased reliability of stack overflow detection, available since gcc 8
             # future use (control flow integrity protection)
-            if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD")
+            if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD" AND NOT ${UA_ARCHITECTURE} STREQUAL "zephyr")
                 check_add_cc_flag("-mcet")
                 check_add_cc_flag("-fcf-protection")
             endif()
