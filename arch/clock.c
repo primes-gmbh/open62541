@@ -35,8 +35,7 @@ UA_DateTime_now(void) {
 UA_Int64
 UA_DateTime_localTimeUtcOffset(void) {
     time_t rawtime = time(NULL);
-    struct tm gbuf;
-    struct tm *ptm = gmtime_r(&rawtime, &gbuf);
+    struct tm *ptm = gmtime(&rawtime);
     /* Request mktime() to look up dst in timezone database */
     ptm->tm_isdst = -1;
     time_t gmt = mktime(ptm);

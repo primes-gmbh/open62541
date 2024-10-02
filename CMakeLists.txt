@@ -1099,7 +1099,7 @@ endif()
 # Generate properly versioned shared library links on Linux.
 # When building packages, include the source in the library name to enable parallel
 # installation of multiple major versions.
-SET_TARGET_PROPERTIES(open62541 PROPERTIES
+set_target_properties(open62541 PROPERTIES
                       SOVERSION "${OPEN62541_VER_MAJOR}.${OPEN62541_VER_MINOR}"
                       VERSION "${OPEN62541_VER_MAJOR}.${OPEN62541_VER_MINOR}.${OPEN62541_VER_PATCH}")
 

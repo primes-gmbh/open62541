@@ -10,7 +10,8 @@
 
 #include "open62541/plugin/eventloop.h"
 
-#if defined(UA_ARCHITECTURE_POSIX) && !defined(__APPLE__) && !defined(__MACH__)
+#if (defined(UA_ARCHITECTURE_POSIX) || defined(UA_ARCHITECTURE_ZEPHYR)) &&               \
+    !defined(__APPLE__) && !defined(__MACH__)
 #include <time.h>
 #endif
 
@@ -471,7 +472,7 @@ UA_EventLoopPOSIX_free(UA_EventLoopPOSIX *el) {
     /* Process remaining delayed callbacks */
     processDelayed(el);
 
-#ifdef _WIN32
+#if defined(UA_ARCHITECTURE_WIN32)
     /* Stop the Windows networking subsystem */
     WSACleanup();
 #endif
@@ -494,7 +495,7 @@ UA_EventLoop_new_POSIX(const UA_Logger *logger) {
     UA_LOCK_INIT(&el->elMutex);
     UA_Timer_init(&el->timer);
 
-#ifdef _WIN32
+#if defined(UA_ARCHITECTURE_WIN32)
     /* Start the WSA networking subsystem on Windows */
     WSADATA wsaData;
     WSAStartup(MAKEWORD(2, 2), &wsaData);
@@ -594,25 +595,23 @@ cmpFD(const UA_FD *a, const UA_FD *b) {
 
 UA_StatusCode
 UA_EventLoopPOSIX_setNonBlocking(UA_FD sockfd) {
-#if defined(UA_ARCHITECTURE_ZEPHYR)
+#if defined(UA_ARCHITECTURE_ZEPHYR) || defined(UA_ARCHITECTURE_WIN32)
     int fl;
-    fl = zsock_fcntl(sockfd, F_GETFL, 0);
+    fl = UA_fcntl(sockfd, F_GETFL, 0);
     if(fl == -1) {
         return UA_STATUSCODE_BADINTERNALERROR;
     }
     fl |= O_NONBLOCK;
-    fl = zsock_fcntl(sockfd, F_SETFL, fl);
+    fl = UA_fcntl(sockfd, F_SETFL, fl);
     if(fl == -1) {
         return UA_STATUSCODE_BADINTERNALERROR;
     }
-#elif defined(_WIN32)
-    int opts = fcntl(sockfd, F_GETFL);
-    if(opts < 0 || fcntl(sockfd, F_SETFL, opts | O_NONBLOCK) < 0)
-        return UA_STATUSCODE_BADINTERNALERROR;
-#else
+#elif defined(UA_ARCHITECTURE_POSIX)
     u_long iMode = 1;
     if(ioctlsocket(sockfd, FIONBIO, &iMode) != NO_ERROR)
         return UA_STATUSCODE_BADINTERNALERROR;
+#else
+#error "Unknown architecture"
 #endif
     return UA_STATUSCODE_GOOD;
 }
@@ -633,7 +632,7 @@ UA_EventLoopPOSIX_setReusable(UA_FD sockfd) {
 #if defined(UA_ARCHITECTURE_ZEPHYR)
     // This operation is not supported on zephyr, thus always return GOOD
     return UA_STATUSCODE_GOOD;
-#elif !defined(WIN32)
+#elif defined(UA_ARCHITECTURE_POSIX)
     int enableReuseVal = 1;
     int res = UA_setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR,
                             (const char *)&enableReuseVal, sizeof(enableReuseVal));
@@ -641,11 +640,13 @@ UA_EventLoopPOSIX_setReusable(UA_FD sockfd) {
                          sizeof(enableReuseVal));
     return (res == 0) ? UA_STATUSCODE_GOOD : UA_STATUSCODE_BADINTERNALERROR;
     return UA_STATUSCODE_GOOD
-#else
+#elif defined(UA_ARCHITECTURE_WIN32)
     int enableReuseVal = 1;
     int res = UA_setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR,
                             (const char *)&enableReuseVal, sizeof(enableReuseVal));
     return (res == 0) ? UA_STATUSCODE_GOOD : UA_STATUSCODE_BADINTERNALERROR;
+#else
+#error "Unknown architecture"
 #endif
 }
 
@@ -657,17 +658,13 @@ UA_EventLoopPOSIX_setReusable(UA_FD sockfd) {
 static void
 flushSelfPipe(UA_SOCKET s) {
     char buf[128];
-#if defined(UA_ARCHITECTURE_ZEPHYR)
-    zsock_recv(s, buf, 128, 0);
-#elif defined(_WIN32)
-    recv(s, buf, 128, 0);
-#elif defined(UA_ARCHITECTURE_ZEPHYR)
-    zsock_recv(s, buf, 128, 0);
-#else
+#if defined(UA_ARCHITECTURE_POSIX)
     ssize_t i;
     do {
-        i = read(s, buf, 128);
+        i = read(s, buf, sizeof(buf));
     } while(i > 0);
+#else
+    UA_recv(s, buf, sizeof(buf), 0);
 #endif
 }
 
@@ -736,63 +733,33 @@ UA_EventLoopPOSIX_deregisterFD(UA_EventLoopPOSIX *el, UA_RegisteredFD *rfd) {
 }
 
 static UA_FD
-#if defined(UA_ARCHITECTURE_ZEPHYR)
-setFDSets(UA_EventLoopPOSIX *el, zsock_fd_set *readset, zsock_fd_set *writeset,
-          zsock_fd_set *errset) {
-#else
-setFDSets(UA_EventLoopPOSIX *el, fd_set *readset, fd_set *writeset, fd_set *errset) {
-#endif
+setFDSets(UA_EventLoopPOSIX *el, UA_FD_SET *readset, UA_FD_SET *writeset,
+          UA_FD_SET *errset) {
     UA_LOCK_ASSERT(&el->elMutex);
     /* Always listen on the read-end of the pipe */
     UA_FD highestfd = el->selfpipe[0];
-#if defined(UA_ARCHITECTURE_ZEPHYR)
-    ZSOCK_FD_ZERO(readset);
-    ZSOCK_FD_ZERO(writeset);
-    ZSOCK_FD_ZERO(errset);
+    UA_FD_ZERO(readset);
+    UA_FD_ZERO(writeset);
+    UA_FD_ZERO(errset);
 
-    ZSOCK_FD_SET(el->selfpipe[0], readset);
-
-    for(size_t i = 0; i < el->fdsSize; i++) {
-        UA_FD currentFD = el->fds[i]->fd;
-
-        /* Add to the fd_sets */
-        if(el->fds[i]->listenEvents & UA_FDEVENT_IN)
-            ZSOCK_FD_SET(currentFD, readset);
-        if(el->fds[i]->listenEvents & UA_FDEVENT_OUT)
-            ZSOCK_FD_SET(currentFD, writeset);
-
-        /* Always return errors */
-        ZSOCK_FD_SET(currentFD, errset);
-
-        /* Highest fd? */
-        if(currentFD > highestfd)
-            highestfd = currentFD;
-    }
-#elif defined(_WIN32)
-    FD_ZERO(readset);
-    FD_ZERO(writeset);
-    FD_ZERO(errset);
-
-    /* Always listen on the read-end of the pipe */
-    FD_SET(el->selfpipe[0], readset);
+    UA_fd_set(el->selfpipe[0], readset);
 
     for(size_t i = 0; i < el->fdsSize; i++) {
         UA_FD currentFD = el->fds[i]->fd;
 
         /* Add to the fd_sets */
         if(el->fds[i]->listenEvents & UA_FDEVENT_IN)
-            FD_SET(currentFD, readset);
+            UA_fd_set(currentFD, readset);
         if(el->fds[i]->listenEvents & UA_FDEVENT_OUT)
-            FD_SET(currentFD, writeset);
+            UA_fd_set(currentFD, writeset);
 
         /* Always return errors */
-        FD_SET(currentFD, errset);
+        UA_fd_set(currentFD, errset);
 
         /* Highest fd? */
         if(currentFD > highestfd)
             highestfd = currentFD;
     }
-#endif
     return highestfd;
 }
 
@@ -801,11 +768,7 @@ UA_EventLoopPOSIX_pollFDs(UA_EventLoopPOSIX *el, UA_DateTime listenTimeout) {
     UA_assert(listenTimeout >= 0);
     UA_LOCK_ASSERT(&el->elMutex);
 
-#if defined(UA_ARCHITECTURE_ZEPHYR)
-    zsock_fd_set readset, writeset, errset;
-#else
-    fd_set readset, writeset, errset;
-#endif
+    UA_FD_SET readset, writeset, errset;
     UA_FD highestfd = setFDSets(el, &readset, &writeset, &errset);
 
     /* Nothing to do? */
@@ -816,7 +779,7 @@ UA_EventLoopPOSIX_pollFDs(UA_EventLoopPOSIX *el, UA_DateTime listenTimeout) {
     }
 
     struct timeval tmptv = {
-#ifndef _WIN32
+#if defined(UA_ARCHITECTURE_WIN32)
         (time_t)(listenTimeout / UA_DATETIME_SEC),
         (suseconds_t)((listenTimeout % UA_DATETIME_SEC) / UA_DATETIME_USEC)
 #else
@@ -837,11 +800,7 @@ UA_EventLoopPOSIX_pollFDs(UA_EventLoopPOSIX *el, UA_DateTime listenTimeout) {
     }
 
     /* The self-pipe has received. Clear the buffer by reading. */
-#if defined(UA_ARCHITECTURE_ZEPHYR)
-    if(UA_UNLIKELY(ZSOCK_FD_ISSET(el->selfpipe[0], &readset)))
-#else
-    if(UA_UNLIKELY(FD_ISSET(el->selfpipe[0], &readset)))
-#endif
+    if(UA_UNLIKELY(UA_FD_ISSET(el->selfpipe[0], &readset)))
         flushSelfPipe(el->selfpipe[0]);
 
     /* Loop over all registered FD to see if an event arrived. Yes, this is why
@@ -856,27 +815,15 @@ UA_EventLoopPOSIX_pollFDs(UA_EventLoopPOSIX *el, UA_DateTime listenTimeout) {
 
         /* Event signaled for the fd? */
         short event = 0;
-#if defined(UA_ARCHITECTURE_ZEPHYR)
-        if(ZSOCK_FD_ISSET(rfd->fd, &readset)) {
+        if(UA_FD_ISSET(rfd->fd, &readset)) {
             event = UA_FDEVENT_IN;
-        } else if(ZSOCK_FD_ISSET(rfd->fd, &writeset)) {
+        } else if(UA_FD_ISSET(rfd->fd, &writeset)) {
             event = UA_FDEVENT_OUT;
-        } else if(ZSOCK_FD_ISSET(rfd->fd, &errset)) {
+        } else if(UA_FD_ISSET(rfd->fd, &errset)) {
             event = UA_FDEVENT_ERR;
         } else {
             continue;
         }
-#else
-        if(FD_ISSET(rfd->fd, &readset)) {
-            event = UA_FDEVENT_IN;
-        } else if(FD_ISSET(rfd->fd, &writeset)) {
-            event = UA_FDEVENT_OUT;
-        } else if(FD_ISSET(rfd->fd, &errset)) {
-            event = UA_FDEVENT_ERR;
-        } else {
-            continue;
-        }
-#endif
 
         UA_LOG_DEBUG(el->eventLoop.logger, UA_LOGCATEGORY_EVENTLOOP,
                      "Processing event %u on fd %u", (unsigned)event, (unsigned)rfd->fd);
@@ -889,6 +836,43 @@ UA_EventLoopPOSIX_pollFDs(UA_EventLoopPOSIX *el, UA_DateTime listenTimeout) {
             i--;
     }
     return UA_STATUSCODE_GOOD;
+}
+
+int
+UA_EventLoopPOSIX_pipe(UA_SOCKET fds[2]) {
+    UA_SOCKET lst;
+    struct sockaddr_in inaddr;
+    memset(&inaddr, 0, sizeof(inaddr));
+    inaddr.sin_family = AF_INET;
+    inaddr.sin_port = 0;
+#if defined(UA_ARCHITECTURE_ZEPHYR)
+    const struct in_addr ipv4_loopback = INADDR_LOOPBACK_INIT;
+    inaddr.sin_addr = ipv4_loopback;
+#else
+    inaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+#endif
+
+    lst = UA_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    UA_bind(lst, (struct sockaddr *)&inaddr, sizeof(inaddr));
+    UA_listen(lst, 1);
+
+    struct sockaddr_storage addr;
+    memset(&addr, 0, sizeof(addr));
+    int len = sizeof(addr);
+    UA_getsockname(lst, (struct sockaddr *)&addr, &len);
+
+    fds[0] = UA_socket(AF_INET, SOCK_STREAM, 0);
+    int err = UA_connect(fds[0], (struct sockaddr *)&addr, len);
+    fds[1] = UA_accept(lst, 0, 0);
+    UA_close(lst);
+
+    UA_EventLoopPOSIX_setNoSigPipe(fds[0]);
+    UA_EventLoopPOSIX_setReusable(fds[0]);
+    UA_EventLoopPOSIX_setNonBlocking(fds[0]);
+    UA_EventLoopPOSIX_setNoSigPipe(fds[1]);
+    UA_EventLoopPOSIX_setReusable(fds[1]);
+    UA_EventLoopPOSIX_setNonBlocking(fds[1]);
+    return err;
 }
 
 #else /* defined(UA_HAVE_EPOLL) */
@@ -1013,75 +997,19 @@ UA_EventLoopPOSIX_pollFDs(UA_EventLoopPOSIX *el, UA_DateTime listenTimeout) {
 
 #endif /* defined(UA_HAVE_EPOLL) */
 
-#if defined(_WIN32) || defined(__APPLE__) || defined(UA_ARCHITECTURE_ZEPHYR)
-int
-UA_EventLoopPOSIX_pipe(SOCKET fds[2]) {
-    SOCKET lst;
-    struct sockaddr_in inaddr;
-    memset(&inaddr, 0, sizeof(inaddr));
-    inaddr.sin_family = AF_INET;
-    inaddr.sin_port = 0;
-#if defined(UA_ARCHITECTURE_ZEPHYR)
-    const struct in_addr ipv4_loopback = INADDR_LOOPBACK_INIT;
-    inaddr.sin_addr = ipv4_loopback;
-    lst = zsock_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    zsock_bind(lst, (struct sockaddr *)&inaddr, sizeof(inaddr));
-    zsock_listen(lst, 1);
-
-    struct sockaddr_storage addr;
-    memset(&addr, 0, sizeof(addr));
-    int len = sizeof(addr);
-    zsock_getsockname(lst, (struct sockaddr *)&addr, &len);
-
-    fds[0] = zsock_socket(AF_INET, SOCK_STREAM, 0);
-    int err = zsock_connect(fds[0], (struct sockaddr *)&addr, len);
-    fds[1] = zsock_accept(lst, 0, 0);
-    zsock_close(lst);
-#else
-    inaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    lst = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    bind(lst, (struct sockaddr *)&inaddr, sizeof(inaddr));
-    listen(lst, 1);
-
-    struct sockaddr_storage addr;
-    memset(&addr, 0, sizeof(addr));
-    int len = sizeof(addr);
-    getsockname(lst, (struct sockaddr *)&addr, &len);
-
-    fds[0] = socket(AF_INET, SOCK_STREAM, 0);
-    int err = connect(fds[0], (struct sockaddr *)&addr, len);
-    fds[1] = accept(lst, 0, 0);
-#ifdef __WIN32
-    closesocket(lst);
-#endif
-#ifdef __APPLE__
-    close(lst);
-#endif
-#endif
-
-    UA_EventLoopPOSIX_setNoSigPipe(fds[0]);
-    UA_EventLoopPOSIX_setReusable(fds[0]);
-    UA_EventLoopPOSIX_setNonBlocking(fds[0]);
-    UA_EventLoopPOSIX_setNoSigPipe(fds[1]);
-    UA_EventLoopPOSIX_setReusable(fds[1]);
-    UA_EventLoopPOSIX_setNonBlocking(fds[1]);
-    return err;
-}
-#endif
-
 void
 UA_EventLoopPOSIX_cancel(UA_EventLoopPOSIX *el) {
     /* Nothing to do if the EventLoop is not executing */
     if(!el->executing)
         return;
 
-        /* Trigger the self-pipe */
-#if defined(UA_ARCHITECTURE_ZEPHYR)
-    int err = zsock_send(el->selfpipe[1], ".", 1, 0);
-#elif defined(_WIN32)
-    int err = send(el->selfpipe[1], ".", 1, 0);
+    /* Trigger the self-pipe */
+#if defined(UA_ARCHITECTURE_ZEPHYR) || defined(UA_ARCHITECTURE_WIN32)
+    int err = UA_send(el->selfpipe[1], ".", 1, 0);
+#elif defined(UA_ARCHITECTURE_POSIX)
+    ssize_t err = UA_write(el->selfpipe[1], ".", 1);
 #else
-    ssize_t err = write(el->selfpipe[1], ".", 1);
+#error "Unknown architecture"
 #endif
     if(err <= 0) {
         UA_LOG_SOCKET_ERRNO_WRAP(
