@@ -76,6 +76,7 @@ typedef SSIZE_T ssize_t;
 #define UA_setsockopt(sockfd, level, optname, optval, optlen)                            \
     setsockopt(sockfd, level, optname, (const char *)(optval), optlen)
 #define UA_inet_pton InetPton
+#define UA_close closesocket
 
 #if UA_IPV6
 #define UA_if_nametoindex if_nametoindex
@@ -126,10 +127,6 @@ typedef SSIZE_T ssize_t;
 #if defined(BSD)
 #include <sys/socket.h>
 #endif
-#endif
-
-#if defined(__APPLE__)
-typedef int SOCKET;
 #endif
 
 #define UA_IPV6 1
@@ -187,24 +184,27 @@ typedef int SOCKET;
 #include <fcntl.h>
 #include <unistd.h>
 
+#include <sys/types.h>
 #include <zephyr/posix/fcntl.h>
 #include <zephyr/net/socket.h>
 
 #define UA_IPV6 1
-#define SOCKET int
-#define UA_SOCKET SOCKET
+#define UA_SOCKET int
 #define UA_INVALID_SOCKET -1
 #define UA_ERRNO errno
 #define UA_INTERRUPTED EINTR
 #define UA_AGAIN EAGAIN /* the same as wouldblock on nearly every system */
 #define UA_INPROGRESS EINPROGRESS
 #define UA_WOULDBLOCK EWOULDBLOCK
-#define UA_POLLIN POLLIN
-#define UA_POLLOUT POLLOUT
-#define UA_SHUT_RDWR SHUT_RDWR
+#define UA_POLLIN ZSOCK_POLLIN
+#define UA_POLLOUT ZSOCK_POLLOUT
+#define UA_SHUT_RDWR ZSOCK_SHUT_RDWR
 
-#define UA_getnameinfo(sa, salen, host, hostlen, serv, servlen, flags)                   \
-    getnameinfo(sa, salen, host, hostlen, serv, servlen, flags)
+#define UA_socket zsock_socket
+#define UA_accept zsock_accept
+#define UA_getnameinfo zsock_getnameinfo
+#define UA_listen zsock_listen
+#define UA_bind zsock_bind
 #define UA_poll zsock_poll
 #define UA_send zsock_send
 #define UA_recv zsock_recv
@@ -212,10 +212,23 @@ typedef int SOCKET;
 #define UA_close zsock_close
 #define UA_select zsock_select
 #define UA_connect zsock_connect
-#define UA_getsockopt getsockopt
-#define UA_setsockopt setsockopt
+#define UA_getsockopt zsock_getsockopt
+#define UA_setsockopt zsock_setsockopt
+#define UA_getsockname zsock_getsockname
 #define UA_inet_pton zsock_inet_pton
 #define UA_if_nametoindex zsock_if_nametoindex
+#define UA_FD_SET struct zsock_fd_set
+#define UA_fd_set ZSOCK_FD_SET
+#define UA_FD_ISSET ZSOCK_FD_ISSET
+#define UA_FD_ZERO ZSOCK_FD_ZERO
+#define UA_fcntl zsock_fcntl
+#define UA_getaddrinfo zsock_getaddrinfo
+#define UA_ADDRINFO struct zsock_addrinfo
+#define UA_gai_strerror zsock_gai_strerror
+#define UA_shutdown zsock_shutdown
+#define UA_freeaddrinfo zsock_freeaddrinfo
+#define UA_gethostname zsock_gethostname
+
 
 #define UA_clean_errno(STR_FUN) (errno == 0 ? (char *)"None" : (STR_FUN)(errno))
 #define UA_LOG_SOCKET_ERRNO_WRAP(LOG)                                                    \
@@ -382,7 +395,7 @@ UA_EventLoopPOSIX_setReusable(UA_FD sockfd);
  * https://stackoverflow.com/a/3333565 */
 #if defined(_WIN32) || defined(__APPLE__) || defined(UA_ARCHITECTURE_ZEPHYR)
 int
-UA_EventLoopPOSIX_pipe(SOCKET fds[2]);
+UA_EventLoopPOSIX_pipe(UA_SOCKET fds[2]);
 #else
 #define UA_EventLoopPOSIX_pipe(fds) pipe2(fds, O_NONBLOCK)
 #endif

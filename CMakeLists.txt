@@ -1099,7 +1099,7 @@ endif()
 # Generate properly versioned shared library links on Linux.
 # When building packages, include the source in the library name to enable parallel
 # installation of multiple major versions.
-SET_TARGET_PROPERTIES(open62541 PROPERTIES
+set_target_properties(open62541 PROPERTIES
                       SOVERSION "${OPEN62541_VER_MAJOR}.${OPEN62541_VER_MINOR}"
                       VERSION "${OPEN62541_VER_MAJOR}.${OPEN62541_VER_MINOR}.${OPEN62541_VER_PATCH}")
 
@@ -1131,6 +1131,7 @@ function(add_cc_flag CC_FLAG)
 endfunction()
 
 if((CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID STREQUAL "Clang") AND NOT UA_ARCHITECTURE STREQUAL "zephyr")
+    message(FATAL "asdf")
     check_add_cc_flag("-std=c99")   # C99 mode
     check_add_cc_flag("-pipe")      # Avoid writing temporary files (for compiler speed)
     check_add_cc_flag("-Wall")      # Warnings

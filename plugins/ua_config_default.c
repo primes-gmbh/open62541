@@ -305,7 +305,7 @@ setDefaultConfig(UA_ServerConfig *conf, UA_UInt16 portNumber) {
 #endif
 
             /* Add the Ethernet connection manager */
-#ifdef __linux__
+#if defined(UA_ARCHITECTURE_POSIX)
         UA_ConnectionManager *ethCM =
             UA_ConnectionManager_new_POSIX_Ethernet(UA_STRING("eth connection manager"));
         if(ethCM)
