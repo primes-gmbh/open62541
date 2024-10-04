@@ -249,7 +249,6 @@ typedef struct addrinfo UA_addrinfo;
 #define UA_getsockname zsock_getsockname
 #define UA_inet_pton zsock_inet_pton
 #define UA_if_nametoindex zsock_if_nametoindex
-#define UA_FD_SET ZSOCK_FD_SET
 #define UA_FD_ISSET ZSOCK_FD_ISSET
 #define UA_FD_ZERO ZSOCK_FD_ZERO
 #define UA_fcntl zsock_fcntl

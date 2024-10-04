@@ -741,7 +741,6 @@ setFDSets(UA_EventLoopPOSIX *el, UA_fd_set *readset, UA_fd_set *writeset,
     UA_FD_ZERO(readset);
     UA_FD_ZERO(writeset);
     UA_FD_ZERO(errset);
-
     UA_FD_SET(el->selfpipe[0], readset);
 
     for(size_t i = 0; i < el->fdsSize; i++) {
